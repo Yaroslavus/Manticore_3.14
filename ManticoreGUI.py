@@ -145,8 +145,9 @@ class ManticoreGUI(tk.Tk):
 
     def __run(self):
         ManticoreController(self.set_1.get(), self.set_2.get(), self.objects_list, self.run_frame,
-                            self.operation_name, self.operation_numerator,
-                            self.progressbar_value_var, self.percents, self.START_TIME, self.time_label)
+                            self.operation_name, self.operation_numerator, self.progressbar_value_var,
+                            self.percents, self.START_TIME, self.time_label, self.input_card_path,
+                            self.data_directory_path, self.temp_directory_path)
 
     def __stop(self):
         if askyesno(title="Processing stop!", message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
@@ -210,7 +211,7 @@ class ManticoreGUI(tk.Tk):
 class ManticoreController:
     def __init__(self, set_1: int, set_2: int, set_3: list, run_frame, operation_name_label,
                  operation_numerator_label, progressbar_value_var, percent_label, start_time,
-                 time_from_start_label):
+                 time_from_start_label, input_card_path, data_dir_path, temp_dir_path):
 
         self.need_to_remove_all_temp_files = set_1
         self.need_to_leave_temp_files_after_processing = set_2
@@ -222,23 +223,35 @@ class ManticoreController:
         self.percent_parent_value_label = percent_label
         self.start_time = start_time
         self.time_from_start_parent_label = time_from_start_label
-        self.__preset_1_execution()
+        self.input_card_path = input_card_path
+        self.data_directory_path = data_dir_path
+        self.temp_directory_path = temp_dir_path
+        self.files_list = []
+
+        if self.need_to_remove_all_temp_files: self.__preset_1_execution()
+
+        self.__parser()
 
     def __preset_1_execution(self):
-        if self.need_to_remove_all_temp_files:
-            self.operation_name_parent_label.configure(text="Deleting old temporary files...")
-            self.operation_numerator_parent_label.configure(text=f'1/10')
-            l = 1000
-            for i in range(l):
-                self.progressbar_parent_value_var.set(i*100//l)
+        self.operation_name_parent_label.configure(text="Deleting old temporary files...")
+        self.operation_numerator_parent_label.configure(text=f'1/10')
+        if not os.path.exists(self.temp_directory_path):
+            pass
+        else:
+            temp_folder_contain = os.listdir(self.temp_directory_path)
+            temp_folder_size = len(temp_folder_contain)
+            for i, file in enumerate(temp_folder_contain):
+                self.progressbar_parent_value_var.set(i*100//temp_folder_size)
                 self.percent_parent_value_label.configure(text=f'{self.progressbar_parent_value_var.get()} %')
                 self.time_from_start_parent_label.configure(text=time_check(self.start_time))
                 self.run_frame_parent.update()
-                print("ok")
-                time.sleep(0.05)
+                os.remove(file)
 
-        #     print("Preprocess of deleting old temporary files...")
-        #     manticore_tools.mess_destroyer(START_TIME)
+    def __parser(self):
+        if sys.platform.startswith('win32'):
+            for i, item in enumerate(self.list_of_objects):
+                self.list_of_objects[i] = item.replace("/", "\\")
+
 
         # manticore_parser.parser(SET_3, START_TIME)
         # manticore_tools.is_preprocessing_needed(SET_1, START_TIME)
