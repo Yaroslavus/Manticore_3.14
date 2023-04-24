@@ -18,7 +18,7 @@ class ManticoreGUI(tk.Tk):
         self.winfo_toplevel().title("Manticore 3.14")
         self.input_card_path, self.data_directory_path, self.temp_directory_path = self.__get_pathes()
         self.objects_list = []
-        self.set_1, self.set_2 = tk.IntVar(), tk.IntVar()
+        self.set_1, self.set_2, self.set_all_data = tk.IntVar(), tk.IntVar(), tk.IntVar()
         self.main_frame = tk.LabelFrame(self, bd=0)
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.head_frame = tk.LabelFrame(self.main_frame, text="Choose the source of settings", bd=2)
@@ -93,11 +93,23 @@ class ManticoreGUI(tk.Tk):
         self.set_1_check.pack(side="top", padx=10, pady=10, anchor="nw")
         self.set_2_check = tk.Checkbutton(self.checkbutton_frame, variable=self.set_2, text="To leave all the temporary files after processing finish")
         self.set_2_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_all = tk.Checkbutton(self.checkbutton_frame, variable=self.set_all_data, text="Process all data", command=self.__choose_all_data)
+        self.set_all.pack(side="top", padx=10, pady=25, anchor="nw")
         self.add_button = tk.Button(self.checkbutton_frame, text="Add item", command=lambda: self.__add_item_to_listbox(event=None))
         self.add_button.pack(side="top", padx=10, pady=10, anchor="w")
         self.new_item_field = tk.Entry(self.checkbutton_frame)
         self.new_item_field.bind("<Return>", self.__add_item_to_listbox)
         self.new_item_field.pack(side="top", padx=10, pady=10, anchor="w")
+
+    def __choose_all_data(self):
+        if self.add_button['state'] == 'normal':
+            self.add_button.configure(state='disabled')
+            self.new_item_field.configure(state='disabled')
+            self.objects_listbox.configure(state='disabled')
+        else:
+            self.add_button.configure(state='normal')
+            self.new_item_field.configure(state='normal')
+            self.objects_listbox.configure(state='normal')
 
     def __add_item_to_listbox(self, event):
         item_list = self.new_item_field.get().split()
@@ -144,10 +156,7 @@ class ManticoreGUI(tk.Tk):
         self.__run()
 
     def __run(self):
-        ManticoreController(self.set_1.get(), self.set_2.get(), self.objects_list, self.run_frame,
-                            self.operation_name, self.operation_numerator, self.progressbar_value_var,
-                            self.percents, self.START_TIME, self.time_label, self.input_card_path,
-                            self.data_directory_path, self.temp_directory_path)
+        ManticoreController(self)
 
     def __stop(self):
         if askyesno(title="Processing stop!", message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
@@ -209,51 +218,87 @@ class ManticoreGUI(tk.Tk):
 
 
 class ManticoreController:
-    def __init__(self, set_1: int, set_2: int, set_3: list, run_frame, operation_name_label,
-                 operation_numerator_label, progressbar_value_var, percent_label, start_time,
-                 time_from_start_label, input_card_path, data_dir_path, temp_dir_path):
-
-        self.need_to_remove_all_temp_files = set_1
-        self.need_to_leave_temp_files_after_processing = set_2
-        self.list_of_objects = set_3
-        self.run_frame_parent = run_frame
-        self.operation_name_parent_label = operation_name_label
-        self.operation_numerator_parent_label = operation_numerator_label
-        self.progressbar_parent_value_var = progressbar_value_var
-        self.percent_parent_value_label = percent_label
-        self.start_time = start_time
-        self.time_from_start_parent_label = time_from_start_label
-        self.input_card_path = input_card_path
-        self.data_directory_path = data_dir_path
-        self.temp_directory_path = temp_dir_path
+    def __init__(self, gui):
+        self.need_to_remove_all_temp_files = gui.set_1.get()
+        self.need_to_leave_temp_files_after_processing = gui.set_2.get()
+        self.list_of_objects = gui.objects_list
+        self.run_frame_parent = gui.run_frame
+        self.operation_name_parent_label = gui.operation_name
+        self.operation_numerator_parent_label = gui.operation_numerator
+        self.progressbar_parent_value_var = gui.progressbar_value_var
+        self.percent_parent_value_label = gui.percents
+        self.start_time = gui.START_TIME
+        self.time_from_start_parent_label = gui.time_label
+        self.input_card_path = gui.input_card_path
+        self.data_directory_path = gui.data_directory_path
+        self.temp_directory_path = gui.temp_directory_path
         self.files_list = []
-
-        if self.need_to_remove_all_temp_files: self.__preset_1_execution()
-
+        if self.need_to_remove_all_temp_files: self.__delete_temporary_files()
         self.__parser()
+        # processing and decoding stuff
+        #
+        #
+        #
+        #
+        #
+        #
+        # processing and decoding stuff
+        if not self.need_to_leave_temp_files_after_processing: self.__delete_temporary_files()
 
-    def __preset_1_execution(self):
+    def __delete_temporary_files(self):
+        # Template 1 --- #
         self.operation_name_parent_label.configure(text="Deleting old temporary files...")
         self.operation_numerator_parent_label.configure(text=f'1/10')
+        # Template 1 --- #
         if not os.path.exists(self.temp_directory_path):
             pass
         else:
+            # Template 2 --- #
             temp_folder_contain = os.listdir(self.temp_directory_path)
             temp_folder_size = len(temp_folder_contain)
+            # Template 2 --- #
             for i, file in enumerate(temp_folder_contain):
+                # Template 3 --- #
                 self.progressbar_parent_value_var.set(i*100//temp_folder_size)
                 self.percent_parent_value_label.configure(text=f'{self.progressbar_parent_value_var.get()} %')
                 self.time_from_start_parent_label.configure(text=time_check(self.start_time))
                 self.run_frame_parent.update()
-                os.remove(file)
+                # Template 3 --- #
+                # print(self.temp_directory_path + "\\" + file)
+                os.remove(self.temp_directory_path + "\\" + file)
+            os.rmdir(self.temp_directory_path)
 
     def __parser(self):
+        # Template 1 --- #
+        self.operation_name_parent_label.configure(text="Parsing input elements pathes...")
+        self.operation_numerator_parent_label.configure(text=f'2/10')
+        # Template 1 --- #
+        # Template 2 --- #
+        list_of_objects = self.list_of_objects
+        list_of_objects_size = len(list_of_objects)
+        # Template 2 --- #
         if sys.platform.startswith('win32'):
             for i, item in enumerate(self.list_of_objects):
                 self.list_of_objects[i] = item.replace("/", "\\")
+        for day_directory in list_of_objects:
+            for root, dirs, files in os.walk("C:\\Users\\yaros\\Yaroslavus\\IACT_DATA" + day_directory):
+                # Template 3 --- #
+                self.progressbar_parent_value_var.set(i*100//list_of_objects_size)
+                self.percent_parent_value_label.configure(text=f'{self.progressbar_parent_value_var.get()} %')
+                self.time_from_start_parent_label.configure(text=time_check(self.start_time))
+                self.run_frame_parent.update()
+                # Template 3 --- #
+                if root.split('\\')[-1].startswith("BSM"):
+                    for file in files:
+                        self.files_list.append(root + '\\' + file)
+        if not os.path.exists(self.temp_directory_path):    # If we need temporary files at all
+            os.makedirs(self.temp_directory_path)           #
+        files = open(self.temp_directory_path + "\\files_list.txt", 'w+', encoding="utf-8") # If we need files_list as FILE!
+        files.close()                                                                       #
+        with open(self.temp_directory_path + "\\files_list.txt", "a") as fout:              #
+            for line in self.files_list:                                                    #
+                fout.write(line + "\n")                                                     #
 
-
-        # manticore_parser.parser(SET_3, START_TIME)
         # manticore_tools.is_preprocessing_needed(SET_1, START_TIME)
 
     def dd():
