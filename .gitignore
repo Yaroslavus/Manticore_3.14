@@ -1,3 +1,12 @@
+manticore_decoding.py
+manticore_main.py
+manticore_parser.py
+manticore_preprocessing_1.py
+manticore_preprocessing.py
+manticore_tools.py
+MantoicoreSH.sh
+ManticoreDecoder.py
+TEMP
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
