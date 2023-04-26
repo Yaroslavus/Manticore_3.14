@@ -312,8 +312,8 @@ class ManticoreController:
             self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in launcher.objects_list if os.path.isdir(self.data_directory_path.joinpath(day))]
         self.list_of_objects_size = len(self.list_of_objects)
         self.start_engine(launcher_type)
-        for object in self.list_of_objects:
-            print(object, '\n')
+        # for object in self.list_of_objects:
+        #     print(object, '\n')
 
     def start_engine(self, launcher_type):
         if launcher_type == "gui":
@@ -416,15 +416,6 @@ class ManticoreEngine:
             controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(peds_average)
             controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(peds_sigma)
             controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(ignore_pack)
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
