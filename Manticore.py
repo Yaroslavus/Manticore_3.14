@@ -369,6 +369,17 @@ class ManticoreEngine:
             codes_beginning_byte = 24
             codes_ending_byte = 152
 
+            # ? ----------------------------------------------
+            # ? with open(ped_file, "rb") as ped_fin:
+            # ?     chunk = ped_fin.read(chunk_size)
+            # ?     while chunk:
+            # ?         ped_array = np.array(struct.unpack("<64h", chunk[codes_beginning_byte:codes_ending_byte]))
+            # ?         for i in range(number_of_codes):
+            # ?             PED.append(ped_array)
+            # ?             PED_av[i] += ped_array[i]/4
+            # ?         counter += 1
+            # ?         chunk = ped_fin.read(chunk_size)
+            # ? ----------------------------------------------
             with open(ped_file, "rb") as ped_fin:
                 chunk = ped_fin.read(chunk_size)
                 while chunk:
@@ -380,6 +391,7 @@ class ManticoreEngine:
                         PED_av[i] += ped_array[i]
                     counter += 1
                     chunk = ped_fin.read(chunk_size)
+            # ----------------------------------------------
 
             for i in range(number_of_codes):
                 PED_av[i] /= counter
