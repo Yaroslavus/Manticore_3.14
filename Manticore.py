@@ -369,45 +369,39 @@ class ManticoreEngine:
             codes_beginning_byte = 24
             codes_ending_byte = 152
 
-            # ? ----------------------------------------------
-            # ? with open(ped_file, "rb") as ped_fin:
-            # ?     chunk = ped_fin.read(chunk_size)
-            # ?     while chunk:
-            # ?         ped_array = np.array(struct.unpack("<64h", chunk[codes_beginning_byte:codes_ending_byte]))
-            # ?         for i in range(number_of_codes):
-            # ?             PED.append(ped_array)
-            # ?             PED_av[i] += ped_array[i]/4
-            # ?         counter += 1
-            # ?         chunk = ped_fin.read(chunk_size)
-            # ? ----------------------------------------------
             with open(ped_file, "rb") as ped_fin:
                 chunk = ped_fin.read(chunk_size)
                 while chunk:
                     ped_array = np.array(struct.unpack("<64h", chunk[codes_beginning_byte:codes_ending_byte]))
-                    for i in range(number_of_codes):
-                        ped_array[i] /= 4
-                    PED.append(ped_array)
-                    for i in range(number_of_codes):
-                        PED_av[i] += ped_array[i]
+            # ? ----------------------------------------------
+            # ?         for i in range(number_of_codes):
+            # ?             PED.append(ped_array)
+            # ?             PED_av[i] += ped_array[i]/4
+            # ? ----------------------------------------------
+                    for i in range(number_of_codes):          #
+                        ped_array[i] /= 4                     #
+                    PED.append(ped_array)                     #
+                    for i in range(number_of_codes):          #
+                        PED_av[i] += ped_array[i]             #
+            # ------------------------------------------------
                     counter += 1
                     chunk = ped_fin.read(chunk_size)
-            # ----------------------------------------------
 
             for i in range(number_of_codes):
                 PED_av[i] /= counter
 
-            # ? ----------------------------------------------
+            # ? ---------------------------------------------------------------------
             # ? for line in PED:
             # ?     for i in range(len(line)):
             # ?         PED_sum[i] += abs(line[i] - PED_av[i])
-            # ? ----------------------------------------------
-            for line in PED:
-                for i in range(len(line)):
-                    line[i] = np.sqrt((line[i] - PED_av[i])*(line[i] - PED_av[i]))
-            for line in PED:
-                for i in range(len(line)):
-                    PED_sum[i] += line[i]
-            # ----------------------------------------------
+            # ? ---------------------------------------------------------------------
+            for line in PED:                                                         #
+                for i in range(len(line)):                                           #
+                    line[i] = np.sqrt((line[i] - PED_av[i])*(line[i] - PED_av[i]))   #
+            for line in PED:                                                         #
+                for i in range(len(line)):                                           #
+                    PED_sum[i] += line[i]                                            #
+            # -----------------------------------------------------------------------
 
             for i in range(number_of_codes):
                 PED_sigma[i] = PED_sum[i]/counter
