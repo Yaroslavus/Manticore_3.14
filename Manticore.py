@@ -23,9 +23,6 @@ class Day:
     stat_peds_average: list = field(default_factory=list)
     stat_peds_sigma: list = field(default_factory=list)
     stat_ignore_pack: list = field(default_factory=list)
-    stat_peds_average_1: list = field(default_factory=list)
-    stat_peds_sigma_1: list = field(default_factory=list)
-    stat_ignore_pack_1: list = field(default_factory=list)
 
 
 @dataclass
