@@ -34,9 +34,9 @@ class ChunkConstants:
     chunk_size: int = 156
     codes_beginning_byte: int = 24
     codes_ending_byte: int = 152
-    IACT_float: np.dtype = np.float64 # np.float16, np.float32 (default in OS), np.float64, np.float128, etc.
-    IACT_int: np.dtype = np.uint8 # 0...255
-
+    IACT_float: np.dtype = np.float32 # np.float16, np.float32 (default in OS and preferable here), np.float64, np.float128, etc.
+    IACT_ignore_int: np.dtype = np.uint8 # 0...255
+    IACT_codes_int: np.dtype = np.int16 # -32768...32767
 
 class ManticoreTools:
     def get_pathes():
@@ -420,16 +420,14 @@ class ManticoreEngine:
             PED = []
             PED_av = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
             PED_sigma = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
-            ignore_status = np.zeros([1, const.number_of_codes], dtype=const.IACT_int)
+            ignore_status = np.zeros([1, const.number_of_codes], dtype=const.IACT_ignore_int)
             sigma_sigma = 0
             with open(ped_file, "rb") as ped_fin:
                 chunk = ped_fin.read(const.chunk_size)
                 while chunk:
-                    # TODO: here we don't need IACT_float (float64). Too much space. It's enough some integer.
-                    # But which? What range amplitudes have?
                     ped_array = np.array(
                         struct.unpack("<64h", chunk[const.codes_beginning_byte:const.codes_ending_byte]),
-                        dtype=const.IACT_float
+                        dtype=const.IACT_codes_int
                                          )
                     ped_array = ped_array.reshape(1, const.number_of_codes)
                     ped_array /= 4
