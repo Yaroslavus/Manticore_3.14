@@ -10,6 +10,8 @@ import struct
 import numpy as np
 from dataclasses import dataclass, field
 # from collections import namedtuple
+import math
+import sys
 
 
 @dataclass
@@ -21,6 +23,19 @@ class Day:
     stat_peds_average: list = field(default_factory=list)
     stat_peds_sigma: list = field(default_factory=list)
     stat_ignore_pack: list = field(default_factory=list)
+    stat_peds_average_1: list = field(default_factory=list)
+    stat_peds_sigma_1: list = field(default_factory=list)
+    stat_ignore_pack_1: list = field(default_factory=list)
+
+
+@dataclass
+class ChunkConstants:
+    number_of_codes: int = 64
+    chunk_size: int = 156
+    codes_beginning_byte: int = 24
+    codes_ending_byte: int = 152
+    IACT_float: np.dtype = np.float64 # np.float16, np.float32 (default in OS), np.float64, np.float128, etc.
+    IACT_int: np.dtype = np.uint8 # 0...255
 
 
 class ManticoreTools:
@@ -124,8 +139,20 @@ class ManticoreGUI(tk.Tk):
     def __set_head_frame(self):
         self.settings_choose_var = tk.BooleanVar()
         self.settings_choose_var.set(1)
-        automatic_settings_radiobutton = tk.Radiobutton(self.head_frame, text='Input card', variable=self.settings_choose_var, value=False, command=lambda: self.__frame_activator(from_manual_to_automatic=1))
-        manual_settings_radiobutton = tk.Radiobutton(self.head_frame, text='Set manually', variable=self.settings_choose_var, value=True, command=lambda: self.__frame_activator(from_manual_to_automatic=0))
+        automatic_settings_radiobutton = tk.Radiobutton(self.head_frame,
+                                                        text='Input card',
+                                                        variable=self.settings_choose_var,
+                                                        value=False,
+                                                        command=lambda: self.__frame_activator(
+                                                            from_manual_to_automatic=1)
+                                                        )
+        manual_settings_radiobutton = tk.Radiobutton(self.head_frame,
+                                                     text='Set manually',
+                                                     variable=self.settings_choose_var,
+                                                     value=True,
+                                                     command=lambda: self.__frame_activator(
+                                                         from_manual_to_automatic=0)
+                                                     )
         automatic_settings_radiobutton.pack(side="left", padx=10, pady=10)
         manual_settings_radiobutton.pack(side="left", padx=10, pady=10)
 
@@ -136,48 +163,73 @@ class ManticoreGUI(tk.Tk):
         self.data_directory_path_field.configure(state='disabled')
         self.data_directory_path_field.pack(side="left", padx=5, pady=10)
         self.data_directory_path_field.bind("<Return>", self.__change_data_directory_path)
-        self.data_directory_path_button = tk.Button(self.head_frame, text="Change path", command=lambda: self.__set_path(self.data_directory_path_field))
+        self.data_directory_path_button = tk.Button(self.head_frame,
+                                                    text="Change path",
+                                                    command=lambda: self.__set_path(
+                                                        self.data_directory_path_field)
+                                                    )
         self.data_directory_path_button.pack(side="left", padx=5, pady=10)
 
-        self.temp_directory_path_label = tk.Label(self.head_frame, text="Temporary files directory:")
+        self.temp_directory_path_label = tk.Label(self.head_frame,
+                                                  text="Temporary files directory:")
         self.temp_directory_path_label.pack(side="left", padx=15, pady=10)
         self.temp_directory_path_field = tk.Entry(self.head_frame, width=30)
         self.temp_directory_path_field.insert('end', self.temp_directory_path)
         self.temp_directory_path_field.configure(state='disabled')
         self.temp_directory_path_field.pack(side="left", padx=5, pady=10)
         self.temp_directory_path_field.bind("<Return>", self.__change_temp_directory_path)
-        self.temp_directory_path_button = tk.Button(self.head_frame, text="Change path", command=lambda: self.__set_path(self.temp_directory_path_field))
+        self.temp_directory_path_button = tk.Button(self.head_frame,
+                                                    text="Change path",
+                                                    command=lambda: self.__set_path(
+                                                        self.temp_directory_path_field)
+                                                    )
         self.temp_directory_path_button.pack(side="left", padx=5, pady=10)
 
     def __set_automatic_settings_frame(self):
-        self.input_card_path_label = tk.Label(self.automatic_settings_frame, text="Path to input card:")
+        self.input_card_path_label = tk.Label(self.automatic_settings_frame,
+                                              text="Path to input card:")
         self.input_card_path_label.pack(side="left", padx=10, pady=10)
         self.input_card_path_field = tk.Entry(self.automatic_settings_frame, width=60)
         self.input_card_path_field.insert('end', self.input_card_path)
         self.input_card_path_field.configure(state='disabled')
         self.input_card_path_field.pack(side="left", padx=10, pady=10)
         self.input_card_path_field.bind("<Return>", self.__change_input_card_path)
-        self.input_card_path_button = tk.Button(self.automatic_settings_frame, text="Change path", command=lambda: self.__set_path(self.input_card_path_field))
+        self.input_card_path_button = tk.Button(self.automatic_settings_frame,
+                                                text="Change path",
+                                                command=lambda: self.__set_path(
+                                                    self.input_card_path_field)
+                                                )
         self.input_card_path_button.pack(side="left", padx=10, pady=10)
 
     def __set_manual_settings_frame(self):
-        self.object_list_frame = tk.LabelFrame(self.manual_settings_frame, text="List of objects to process", bd=2)
+        self.object_list_frame = tk.LabelFrame(self.manual_settings_frame,
+                                               text="List of objects to process", bd=2)
         self.object_list_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.presets_frame = tk.LabelFrame(self.manual_settings_frame, text="Presets", bd=2)
         self.presets_frame.pack(side="left", padx=10, pady=10, anchor="n")
         self.checkbutton_frame = tk.Frame(self.presets_frame, bd=2)
         self.checkbutton_frame.pack(side="top", padx=10, pady=10, anchor="nw")
         self.objects_var = tk.StringVar(value=self.objects_list)
-        self.objects_listbox = tk.Listbox(self.object_list_frame, listvariable=self.objects_var, selectmode='extended')
+        self.objects_listbox = tk.Listbox(self.object_list_frame,
+                                          listvariable=self.objects_var,
+                                          selectmode='extended')
         self.objects_listbox.pack(side="top", fill="both", expand=True, padx=10, pady=10)
         self.objects_listbox.bind("<BackSpace>", self.__del_selected_from_listbox)
-        self.set_1_check = tk.Checkbutton(self.checkbutton_frame, variable=self.set_1, text="Delete existing temporary files before processing and start with new raw processing")
+        self.set_1_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_1,
+            text="Delete existing temporary files before processing and start with new raw processing")
         self.set_1_check.pack(side="top", padx=10, pady=10, anchor="nw")
-        self.set_2_check = tk.Checkbutton(self.checkbutton_frame, variable=self.set_2, text="To leave all the temporary files after processing finish")
+        self.set_2_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_2,
+            text="To leave all the temporary files after processing finish")
         self.set_2_check.pack(side="top", padx=10, pady=10, anchor="nw")
-        self.set_all = tk.Checkbutton(self.checkbutton_frame, variable=self.set_all_data_var, text="Process all data", command=self.__choose_all_data)
+        self.set_all = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_all_data_var,
+            text="Process all data", command=self.__choose_all_data)
         self.set_all.pack(side="top", padx=10, pady=25, anchor="nw")
-        self.add_button = tk.Button(self.checkbutton_frame, text="Add item", command=lambda: self.__add_item_to_listbox(event=None))
+        self.add_button = tk.Button(self.checkbutton_frame, text="Add item",
+                                    command=lambda: self.__add_item_to_listbox(event=None)
+                                    )
         self.add_button.pack(side="top", padx=10, pady=10, anchor="w")
         self.new_item_field = tk.Entry(self.checkbutton_frame)
         self.new_item_field.bind("<Return>", self.__add_item_to_listbox)
@@ -208,7 +260,8 @@ class ManticoreGUI(tk.Tk):
             self.objects_list.pop(i)
 
     def __set_run_frame(self):
-        self.run_button = tk.Button(self.run_frame, text="Run", bg="red", command=lambda: self.__run_frame_update())
+        self.run_button = tk.Button(
+            self.run_frame, text="Run", bg="red", command=lambda: self.__run_frame_update())
         self.run_button.pack(side="left", padx=10, pady=10)
 
     def __run_frame_update(self):
@@ -223,7 +276,8 @@ class ManticoreGUI(tk.Tk):
         self.START_TIME = time.time()
         self.progressbar_value_var = tk.IntVar()
         self.progressbar_value_var.set(0)
-        self.progressbar =  ttk.Progressbar(self.run_frame, orient="horizontal", variable=self.progressbar_value_var, maximum=100)
+        self.progressbar =  ttk.Progressbar(self.run_frame, orient="horizontal",
+                                            variable=self.progressbar_value_var, maximum=100)
         self.progressbar.pack(side='left', fill='x', expand=True, padx=10, pady=10)
         self.percents = tk.Label(self.run_frame, text=f'{self.progressbar_value_var.get()} %')
         self.percents.pack(side="left", padx=10, pady=10)
@@ -238,13 +292,14 @@ class ManticoreGUI(tk.Tk):
         self.__run()
 
     def __run(self):
-        self.set_all_data = 1 if (self.objects_list == ["a"] or self.set_all_data_var) else 0
+        self.set_all_data = 1 if (self.objects_list == ["a"] or self.set_all_data_var.get()) else 0
         self.need_to_remove_all_temp_files = self.set_1.get()
         self.need_to_leave_temp_files_after_processing = self.set_2.get()
         ManticoreController(self, "gui")
 
     def __stop(self):
-        if askyesno(title="Processing stop!", message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
+        if askyesno(title="Processing stop!",
+                    message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
             self.__stop_processing()
             self.run_frame.destroy()
             self.run_frame = tk.LabelFrame(self.main_frame, text="Run", bd=2)
@@ -312,23 +367,26 @@ class ManticoreController:
             self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in launcher.objects_list if os.path.isdir(self.data_directory_path.joinpath(day))]
         self.list_of_objects_size = len(self.list_of_objects)
         self.start_engine(launcher_type)
-        # for object in self.list_of_objects:
-        #     print(object, '\n')
 
     def start_engine(self, launcher_type):
         if launcher_type == "gui":
             ManticoreEngine.parser(self, [LauncherManipulators.parser_gui_outside_manipulator,
                                           LauncherManipulators.parser_gui_inside_manipulator])
             for i in range(self.list_of_objects_size):
-                ManticoreEngine.static_pedestals(self, i, [LauncherManipulators.static_pedestals_gui_outside_manipulator,
-                                                        LauncherManipulators.static_pedestals_gui_inside_manipulator])
-
+                ManticoreEngine.static_pedestals(
+                    self, i,
+                    [LauncherManipulators.static_pedestals_gui_outside_manipulator,
+                     LauncherManipulators.static_pedestals_gui_inside_manipulator]
+                                                )
         elif launcher_type == "console":
             ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
                                           LauncherManipulators.parser_console_inside_manipulator])
             for i in range(self.list_of_objects_size):
-                ManticoreEngine.static_pedestals(self, i, [LauncherManipulators.static_pedestals_console_outside_manipulator,
-                                                        LauncherManipulators.static_pedestals_console_inside_manipulator])
+                ManticoreEngine.static_pedestals(
+                    self, i,
+                    [LauncherManipulators.static_pedestals_console_outside_manipulator,
+                     LauncherManipulators.static_pedestals_console_inside_manipulator]
+                                                )
 
 
 class ManticoreEngine:
@@ -356,72 +414,46 @@ class ManticoreEngine:
         day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
         day_ped_path_contains_size = len(day_ped_path_contains)
         list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
+        const = ChunkConstants()
         for k, ped_file in list_of_ped_files_iterator:
             counter = 0
-            number_of_codes = 64
             PED = []
-            PED_av = [0]*number_of_codes
-            PED_sum = [0]*number_of_codes
-            PED_sigma = [0]*number_of_codes
+            PED_av = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
+            PED_sigma = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
+            ignore_status = np.zeros([1, const.number_of_codes], dtype=const.IACT_int)
             sigma_sigma = 0
-            ignore_status = [0]*number_of_codes
-            chunk_size = 156
-            codes_beginning_byte = 24
-            codes_ending_byte = 152
-
             with open(ped_file, "rb") as ped_fin:
-                chunk = ped_fin.read(chunk_size)
+                chunk = ped_fin.read(const.chunk_size)
                 while chunk:
-                    ped_array = np.array(struct.unpack("<64h", chunk[codes_beginning_byte:codes_ending_byte]))
-            # ? ----------------------------------------------
-            # ?         for i in range(number_of_codes):
-            # ?             PED.append(ped_array)
-            # ?             PED_av[i] += ped_array[i]/4
-            # ? ----------------------------------------------
-                    for i in range(number_of_codes):          #
-                        ped_array[i] /= 4                     #
-                    PED.append(ped_array)                     #
-                    for i in range(number_of_codes):          #
-                        PED_av[i] += ped_array[i]             #
-            # ------------------------------------------------
+                    # TODO: here we don't need IACT_float (float64). Too much space. It's enough some integer.
+                    # But which? What range amplitudes have?
+                    ped_array = np.array(
+                        struct.unpack("<64h", chunk[const.codes_beginning_byte:const.codes_ending_byte]),
+                        dtype=const.IACT_float
+                                         )
+                    ped_array = ped_array.reshape(1, const.number_of_codes)
+                    ped_array /= 4
+                    PED.append(ped_array)
+                    PED_av += ped_array
                     counter += 1
-                    chunk = ped_fin.read(chunk_size)
-
-            for i in range(number_of_codes):
-                PED_av[i] /= counter
-
-            # ? ---------------------------------------------------------------------
-            # ? for line in PED:
-            # ?     for i in range(len(line)):
-            # ?         PED_sum[i] += abs(line[i] - PED_av[i])
-            # ? ---------------------------------------------------------------------
-            for line in PED:                                                         #
-                for i in range(len(line)):                                           #
-                    line[i] = np.sqrt((line[i] - PED_av[i])*(line[i] - PED_av[i]))   #
-            for line in PED:                                                         #
-                for i in range(len(line)):                                           #
-                    PED_sum[i] += line[i]                                            #
-            # -----------------------------------------------------------------------
-
-            for i in range(number_of_codes):
-                PED_sigma[i] = PED_sum[i]/counter
-            sigma_av = sum(PED_sigma)/len(PED_sigma)
-            for item in PED_sigma:
-                sigma_sigma += (sigma_av - item)**2
-            sigma_sigma = np.sqrt(sigma_sigma/len(PED_sigma))
-            for i in range(len(PED_av)):
-                if not (-1*sigma_av - 3*sigma_sigma < PED_sigma[i] < sigma_av + 3*sigma_sigma):
-                    ignore_status[i] += (i%2 +1)
-
-            ignore_pack = struct.pack('<64B', *ignore_status)
-            peds_average = struct.pack('<64f', *PED_av)
-            peds_sigma = struct.pack('<64f', *PED_sigma)
-
+                    chunk = ped_fin.read(const.chunk_size)
+            PED_av /= counter
+            for line in PED:
+                PED_sigma += np.absolute(line - PED_av)
+            PED_sigma /= counter
+            sigma_av = np.average(PED_sigma)
+            sigma_sigma = np.sqrt(np.sum((sigma_av - PED_sigma[0])**2)/len(PED_sigma[0]))
+            # TODO: Is not elegant, but works and fast enough.
+            # Don't understand, why generator below counts uncorrect values:
+            # ignore_status_1[0] = [(i%2 + 1) if (np.absolute(elem) > np.absolute(sigma_av + 3*sigma_sigma)) else 0 for i, elem in enumerate(PED_av[0])]
+            for i in range(len(PED_av[0])):
+                if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma):
+                    ignore_status[0][i] = (i%2 +1)
+            # ------------------------------------------------------------------
             inside_launcher_manipulator(controller, k, day_ped_path_contains_size)
-
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(peds_average)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(peds_sigma)
-            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(ignore_pack)
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(struct.pack('<64f', *PED_av[0]))
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(struct.pack('<64f', *PED_sigma[0]))
+            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(struct.pack('<64B', *ignore_status[0]))
 
 
 if __name__ == "__main__":
