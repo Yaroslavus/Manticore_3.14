@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 # from collections import namedtuple
 import math
 import sys
+from typing import List, Dict
 
 
 @dataclass
@@ -23,20 +24,23 @@ class Day:
     stat_peds_average: list = field(default_factory=list)
     stat_peds_sigma: list = field(default_factory=list)
     stat_ignore_pack: list = field(default_factory=list)
+    # dynamic_pedestals: list = field(default_factory=list)
 
 
-@dataclass
-class ChunkConstants:
+@dataclass(frozen=True)
+class Constants:
     number_of_codes: int = 64
     chunk_size: int = 156
     codes_beginning_byte: int = 24
     codes_ending_byte: int = 152
     IACT_float: np.dtype = np.float32 # np.float16, np.float32 (default in OS and preferable here), np.float64, np.float128, etc.
     IACT_ignore_int: np.dtype = np.uint8 # 0...255
-    IACT_codes_int: np.dtype = np.int16 # -32768...32767
+    # IACT_codes_int: np.dtype = np.int16 # -32768...32767
+    BSM_list: list = field(default_factory=lambda: [f'BSM{"0"*(2-len(str(i)))}{i}' for i in range(1, 23)])
+
 
 class ManticoreTools:
-    def get_pathes():
+    def get_pathes() -> tuple[str, str, str]:
         script_directory = pathlib.Path(__file__).parent
         input_card_path = script_directory.joinpath('input_card.conf')
         data_directory_conf_path = script_directory.joinpath('data_directory.conf')
@@ -45,52 +49,67 @@ class ManticoreTools:
         temp_files_directory_path = pathlib.Path(temp_files_directory_conf_path.read_text().strip())
         return input_card_path, data_directory_path, temp_files_directory_path
 
-    def time_check(start_time):
+    def time_check(start_time: float) -> str:
         current_time = time.time() - start_time
         return f'[ {int(current_time//60//60):2} h {int(current_time//60%60):2} m {int(current_time%60):2} s ]'
 
-    def read_input_card(input_card_path):
+    def read_input_card(input_card_path: str) -> list[int, int, int]:
         with open(input_card_path, "r") as input_card:
-            ans_list = []
-            for line in input_card.readlines():
-                if line[0] != '#':
-                    ans_list.append(line[:-1])
-        return [ans for ans in ans_list]
+            return [line.strip() for line in input_card.readlines() if not line.startswith('#')]
 
 
 class LauncherManipulators:
-    def parser_gui_outside_manipulator(gui):
+    def parser_gui_outside_manipulator(gui) -> enumerate:
         gui.operation_name_parent_label.configure(text="Parsing input elements pathes...")
         gui.operation_numerator_parent_label.configure(text=f'1/10')
         return enumerate(gui.list_of_objects)
 
-    def parser_gui_inside_manipulator(gui, i):
+    def parser_gui_inside_manipulator(gui, i: int) -> None:
         gui.progressbar_parent_value_var.set((i+1)*100//gui.list_of_objects_size)
         gui.percent_parent_value_label.configure(text=f'{gui.progressbar_parent_value_var.get()} %')
         gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
         gui.run_frame_parent.update()
 
-    def parser_console_outside_manipulator(console):
+    def parser_console_outside_manipulator(console) -> enumerate:
         return enumerate(tqdm(console.list_of_objects, desc="Parsing input elements pathes..."))
 
-    def parser_console_inside_manipulator(console, i):
+    def parser_console_inside_manipulator(console, i: int) -> None:
         pass
 
-    def static_pedestals_gui_outside_manipulator(gui, day_name, list_of_ped_files):
+
+    def static_pedestals_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
         gui.operation_name_parent_label.configure(text=f'{day_name}: Making static pedestals...')
         gui.operation_numerator_parent_label.configure(text=f'2/10')
         return enumerate(list_of_ped_files)
 
-    def static_pedestals_gui_inside_manipulator(gui, i, list_of_ped_files_size):
+    def static_pedestals_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: int) -> None:
         gui.progressbar_parent_value_var.set((i+1)*100//list_of_ped_files_size)
         gui.percent_parent_value_label.configure(text=f'{gui.progressbar_parent_value_var.get()} %')
         gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
         gui.run_frame_parent.update()
 
-    def static_pedestals_console_outside_manipulator(console, day_name, list_of_ped_files):
+    def static_pedestals_console_outside_manipulator(console, day_name: str, list_of_ped_files: list) -> enumerate:
         return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: Making static pedestals...'))
 
-    def static_pedestals_console_inside_manipulator(console, i, list_of_ped_files):
+    def static_pedestals_console_inside_manipulator(console, i: int, list_of_ped_files: list) -> None:
+        pass
+
+
+    def dynamic_pedestals_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making dynamic pedestals...')
+        gui.operation_numerator_parent_label.configure(text=f'3/10')
+        return enumerate(list_of_ped_files)
+
+    def dynamic_pedestals_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: list) -> None:
+        gui.progressbar_parent_value_var.set((i+1)*100//list_of_ped_files_size)
+        gui.percent_parent_value_label.configure(text=f'{gui.progressbar_parent_value_var.get()} %')
+        gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
+        gui.run_frame_parent.update()
+
+    def dynamic_pedestals_console_outside_manipulator(console, day_name: str, list_of_ped_files: list) -> enumerate:
+        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: Making dynamic pedestals...'))
+
+    def dynamic_pedestals_console_inside_manipulator(console, i: int, list_of_ped_files: list) -> None:
         pass
 
 
@@ -351,6 +370,7 @@ class ManticoreController:
         self.set_all_data = launcher.set_all_data
         self.need_to_remove_all_temp_files = launcher.need_to_remove_all_temp_files
         self.need_to_leave_temp_files_after_processing = launcher.need_to_leave_temp_files_after_processing
+        self.constants = Constants()
         if launcher_type == "gui":
             self.run_frame_parent = launcher.run_frame
             self.operation_name_parent_label = launcher.operation_name
@@ -384,10 +404,15 @@ class ManticoreController:
                     [LauncherManipulators.static_pedestals_console_outside_manipulator,
                      LauncherManipulators.static_pedestals_console_inside_manipulator]
                                                 )
+                ManticoreEngine.dynamic_pedestals(
+                    self, i,
+                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
+                                                )
 
 
 class ManticoreEngine:
-    def parser(controller, manipulators):
+    def parser(controller, manipulators: list[function, function]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # FULL REWRITE. OLD FILES ARE GONE !!!
         controller.files_list_file.touch(exist_ok = True) # FULL REWRITE !!!
@@ -397,41 +422,40 @@ class ManticoreEngine:
                 if root[-5:-2] == "BSM":
                     for file in files:
                         file = pathlib.Path(root).joinpath(file)
-                        tail = file.suffix[1:]
+                        tail = file.suffix
                         controller.files_list.append(file)
                         controller.list_of_objects[i].tails_dict[tail] = []
             inside_launcher_manipulator(controller, i)
-        controller.files_list.sort()
+        controller.files_list.sort()    # Is needed?
         controller.files_list_file.write_text("\n".join([str(file) for file in controller.files_list]))
 
-    def static_pedestals(controller, number_of_day_in_total_list, manipulators):
+    def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[function, function]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day_path = controller.list_of_objects[number_of_day_in_total_list].path
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
         day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
         day_ped_path_contains_size = len(day_ped_path_contains)
         list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
-        const = ChunkConstants()
         for k, ped_file in list_of_ped_files_iterator:
             counter = 0
             PED = []
-            PED_av = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
-            PED_sigma = np.zeros([1, const.number_of_codes], dtype=const.IACT_float)
-            ignore_status = np.zeros([1, const.number_of_codes], dtype=const.IACT_ignore_int)
+            PED_av = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
+            PED_sigma = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
+            ignore_status = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_ignore_int)
             sigma_sigma = 0
             with open(ped_file, "rb") as ped_fin:
-                chunk = ped_fin.read(const.chunk_size)
+                chunk = ped_fin.read(controller.constants.chunk_size)
                 while chunk:
                     ped_array = np.array(
-                        struct.unpack("<64h", chunk[const.codes_beginning_byte:const.codes_ending_byte]),
-                        dtype=const.IACT_codes_int
+                        struct.unpack("<64h", chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]),
+                        dtype=controller.constants.IACT_float
                                          )
-                    ped_array = ped_array.reshape(1, const.number_of_codes)
+                    ped_array = ped_array.reshape(1, controller.constants.number_of_codes)
                     ped_array /= 4
                     PED.append(ped_array)
                     PED_av += ped_array
                     counter += 1
-                    chunk = ped_fin.read(const.chunk_size)
+                    chunk = ped_fin.read(controller.constants.chunk_size)
             PED_av /= counter
             for line in PED:
                 PED_sigma += np.absolute(line - PED_av)
@@ -449,6 +473,17 @@ class ManticoreEngine:
             controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(struct.pack('<64f', *PED_av[0]))
             controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(struct.pack('<64f', *PED_sigma[0]))
             controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(struct.pack('<64B', *ignore_status[0]))
+
+
+    def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[function, function]) -> None:
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+        day_path = controller.list_of_objects[number_of_day_in_total_list].path
+        day_name = controller.list_of_objects[number_of_day_in_total_list].name
+        day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
+        day_ped_path_contains_size = len(day_ped_path_contains)
+        list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
+        print(controller.list_of_objects[number_of_day_in_total_list].tails_dict)
+        print(controller.constants.BSM_list)
 
 
 if __name__ == "__main__":
