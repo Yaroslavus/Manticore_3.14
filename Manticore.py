@@ -124,6 +124,24 @@ class LauncherManipulators:
         pass
 
 
+    def amplitudes_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making amplitudes...')
+        gui.operation_numerator_parent_label.configure(text=f'4/10')
+        return enumerate(list_of_ped_files)
+
+    def amplitudes_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: list) -> None:
+        gui.progressbar_parent_value_var.set((i+1)*100//list_of_ped_files_size)
+        gui.percent_parent_value_label.configure(text=f'{gui.progressbar_parent_value_var.get()} %')
+        gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
+        gui.run_frame_parent.update()
+
+    def amplitudes_console_outside_manipulator(console, day_name: str, list_of_tails: list) -> enumerate:
+        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 4/10 Making amplitudes...'))
+
+    def amplitudes_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
+        pass
+
+
 class ManticoreConsole:
     def __init__(self):
         self.input_card_path, self.data_directory_path, self.temp_directory_path = ManticoreTools.get_pathes()
@@ -410,21 +428,26 @@ class ManticoreController:
             ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
                                           LauncherManipulators.parser_console_inside_manipulator])
             for i in range(self.list_of_objects_size):
-                ManticoreEngine.static_pedestals(
-                    self, i,
-                    [LauncherManipulators.static_pedestals_console_outside_manipulator,
-                     LauncherManipulators.static_pedestals_console_inside_manipulator]
+                # ManticoreEngine.static_pedestals(
+                #     self, i,
+                #     [LauncherManipulators.static_pedestals_console_outside_manipulator,
+                #      LauncherManipulators.static_pedestals_console_inside_manipulator]
+                #                                 )
+                # ManticoreEngine.dynamic_pedestals_old(
+                #     self, i,
+                #     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                #      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
+                #                                 )
+                # ManticoreEngine.dynamic_pedestals(
+                #     self, i,
+                #     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                #      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
+                #     )
+                ManticoreEngine.take_amplitudes_old(
+                    self, 0, i,
+                    [LauncherManipulators.amplitudes_console_outside_manipulator,
+                     LauncherManipulators.amplitudes_console_inside_manipulator]
                                                 )
-                ManticoreEngine.dynamic_pedestals_old(
-                    self, i,
-                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
-                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
-                                                )
-                ManticoreEngine.dynamic_pedestals(
-                    self, i,
-                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
-                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
-                    )
 
 class ManticoreEngine:
     def parser(controller, manipulators: list[callable, callable]) -> None:
@@ -615,6 +638,29 @@ class ManticoreEngine:
 
             inside_launcher_manipulator(controller, k, tails_number)
 
+    def take_amplitudes_old(controller, pedestal_flag: int, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+        day_path = controller.list_of_objects[number_of_day_in_total_list].path
+        day_name = controller.list_of_objects[number_of_day_in_total_list].name
+        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
+        tails_number = len(tails_list)
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_1 = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_1 = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_1 = [[] for i in range(controller.constants.BSM_number)]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+
+        for k, tail in list_of_tails_iterator:
+            for j, BSM_number in enumerate(controller.constants.BSM_list):
+                next_file_in_current_tail_bunch = day_path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(
+                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
+                            tail)
+                print(next_file_in_current_tail_bunch)
+            print()
+            inside_launcher_manipulator(controller, k, tails_number)
+
+    def take_amplitudes(controller, pedestal_flag: int, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        pass
 
 if __name__ == "__main__":
     ManticoreConsole()
