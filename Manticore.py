@@ -124,8 +124,8 @@ class LauncherManipulators:
         pass
 
 
-    def amplitudes_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
-        gui.operation_name_parent_label.configure(text=f'{day_name}: Making amplitudes...')
+    def amplitudes_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list, pedestals_flag: str) -> enumerate:
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making {pedestals_flag} amplitudes...')
         gui.operation_numerator_parent_label.configure(text=f'4/10')
         return enumerate(list_of_ped_files)
 
@@ -135,8 +135,8 @@ class LauncherManipulators:
         gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
         gui.run_frame_parent.update()
 
-    def amplitudes_console_outside_manipulator(console, day_name: str, list_of_tails: list) -> enumerate:
-        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 4/10 Making amplitudes...'))
+    def amplitudes_console_outside_manipulator(console, day_name: str, list_of_tails: list, pedestals_flag: str) -> enumerate:
+        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 4/10 Making {pedestals_flag} amplitudes...'))
 
     def amplitudes_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
         pass
@@ -647,16 +647,27 @@ class ManticoreEngine:
         controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_1 = [[] for i in range(controller.constants.BSM_number)]
         controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_1 = [[] for i in range(controller.constants.BSM_number)]
         controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_1 = [[] for i in range(controller.constants.BSM_number)]
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list, pedestal_flag)
 
         for k, tail in list_of_tails_iterator:
+            opened_files_bunch = []
+            chunks = []
             for j, BSM_number in enumerate(controller.constants.BSM_list):
                 next_file_in_current_tail_bunch = day_path.joinpath(
                     controller.constants.BSM_list[j]).joinpath(
                         controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
                             tail)
-                print(next_file_in_current_tail_bunch)
-            print()
+                opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
+            chunks = [codes_fin.read(controller.constants.chunk_size) for codes_fin in opened_files_bunch]
+            while chunks:
+                print()
+                for chunk in chunks:
+                    event_number = struct.unpack('I', chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
+                    print(event_number, end="  ")
+                print("\n\n")
+                break
+            break
+                # chunks = [codes_fin.read(controller.constants.chunk_size) for codes_fin in opened_files_bunch]
             inside_launcher_manipulator(controller, k, tails_number)
 
     def take_amplitudes(controller, pedestal_flag: int, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
