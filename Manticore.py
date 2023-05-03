@@ -9,7 +9,6 @@ from tqdm import tqdm
 import struct
 import numpy as np
 from dataclasses import dataclass, field
-# from collections import namedtuple
 import math
 import sys
 from typing import List, Dict
@@ -18,13 +17,21 @@ from typing import List, Dict
 @dataclass
 class Day:
     name: str = None
-    tails_dict: dict = field(default_factory=dict)
-    path: pathlib.WindowsPath = None
-    static_pedestals: list = field(default_factory=list)
-    stat_peds_average: list = field(default_factory=list)
-    stat_peds_sigma: list = field(default_factory=list)
-    stat_ignore_pack: list = field(default_factory=list)
-    # dynamic_pedestals: list = field(default_factory=list)
+    tails_dict: dict = field(default_factory=dict)          # dict = {str: list[min_event, max_event]}
+    path: pathlib.WindowsPath = None                        # str <----> pathlib.WindowsPath object
+    files_list: list = field(default_factory=list)          # list[str, str...str]. Items are "stems" - file names without path and suffix
+
+    stat_peds_average: list = field(default_factory=list)   # python list = [numpy.ndarray, numpy.ndarray...numpy.ndarray]
+    stat_peds_sigma: list = field(default_factory=list)     # each numpy array = [[float, float...float]]
+    stat_ignore_pack: list = field(default_factory=list)    # with shape = (1, number of codes)
+
+    # dyn_peds_average_old: list = field(default_factory=list)    # list with shape = (BSM number, number of tails)
+    # dyn_peds_sigma_old: list = field(default_factory=list)      # each element is a list = [float, float...float]
+    # dyn_ignore_pack_old: list = field(default_factory=list)     # with len = number of codes
+
+    dyn_peds_average: list = field(default_factory=list)  # python list with shape = (BSM number, number of tails)
+    dyn_peds_sigma: list = field(default_factory=list)    # each element is a numpy array = [[float, float...float]]
+    dyn_ignore_pack: list = field(default_factory=list)   # with shape = (1, number of codes)
 
 
 @dataclass(frozen=True)
@@ -33,10 +40,14 @@ class Constants:
     chunk_size: int = 156
     codes_beginning_byte: int = 24
     codes_ending_byte: int = 152
+    number_1_beginning_byte = 4
+    number_1_ending_byte = 8
+    maroc_number_byte = 20
     IACT_float: np.dtype = np.float32 # np.float16, np.float32 (default in OS and preferable here), np.float64, np.float128, etc.
     IACT_ignore_int: np.dtype = np.uint8 # 0...255
-    # IACT_codes_int: np.dtype = np.int16 # -32768...32767
-    BSM_list: list = field(default_factory=lambda: [f'BSM{"0"*(2-len(str(i)))}{i}' for i in range(1, 23)])
+    IACT_codes_int: np.dtype = np.int16 # -32768...32767
+    BSM_number = 22
+    BSM_list: list = field(default_factory=lambda: [f'BSM{"0"*(2-len(str(i)))}{i}' for i in range(1, Constants.BSM_number + 1)])
 
 
 class ManticoreTools:
@@ -71,7 +82,7 @@ class LauncherManipulators:
         gui.run_frame_parent.update()
 
     def parser_console_outside_manipulator(console) -> enumerate:
-        return enumerate(tqdm(console.list_of_objects, desc="Parsing input elements pathes..."))
+        return enumerate(tqdm(console.list_of_objects, desc="1/10 Parsing input elements pathes..."))
 
     def parser_console_inside_manipulator(console, i: int) -> None:
         pass
@@ -89,7 +100,7 @@ class LauncherManipulators:
         gui.run_frame_parent.update()
 
     def static_pedestals_console_outside_manipulator(console, day_name: str, list_of_ped_files: list) -> enumerate:
-        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: Making static pedestals...'))
+        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: 2/10 Making static pedestals...'))
 
     def static_pedestals_console_inside_manipulator(console, i: int, list_of_ped_files: list) -> None:
         pass
@@ -106,10 +117,10 @@ class LauncherManipulators:
         gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
         gui.run_frame_parent.update()
 
-    def dynamic_pedestals_console_outside_manipulator(console, day_name: str, list_of_ped_files: list) -> enumerate:
-        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: Making dynamic pedestals...'))
+    def dynamic_pedestals_console_outside_manipulator(console, day_name: str, list_of_tails: list) -> enumerate:
+        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 3/10 Making dynamic pedestals...'))
 
-    def dynamic_pedestals_console_inside_manipulator(console, i: int, list_of_ped_files: list) -> None:
+    def dynamic_pedestals_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
         pass
 
 
@@ -150,7 +161,7 @@ class ManticoreGUI(tk.Tk):
         self.run_frame = tk.LabelFrame(self.main_frame, text="Run", bd=2)
         self.run_frame.pack(fill="both", expand=False, padx=10, pady=10)
         self.__set_run_frame()
-        self.__frame_activator(from_manual_to_automatic=0)
+        self.__frame_activator(from_manual_to_automatic=False)
 
     def __set_head_frame(self):
         self.settings_choose_var = tk.BooleanVar()
@@ -160,14 +171,14 @@ class ManticoreGUI(tk.Tk):
                                                         variable=self.settings_choose_var,
                                                         value=False,
                                                         command=lambda: self.__frame_activator(
-                                                            from_manual_to_automatic=1)
+                                                            from_manual_to_automatic=True)
                                                         )
         manual_settings_radiobutton = tk.Radiobutton(self.head_frame,
                                                      text='Set manually',
                                                      variable=self.settings_choose_var,
                                                      value=True,
                                                      command=lambda: self.__frame_activator(
-                                                         from_manual_to_automatic=0)
+                                                         from_manual_to_automatic=False)
                                                      )
         automatic_settings_radiobutton.pack(side="left", padx=10, pady=10)
         manual_settings_radiobutton.pack(side="left", padx=10, pady=10)
@@ -323,12 +334,12 @@ class ManticoreGUI(tk.Tk):
             for child in self.head_frame.winfo_children():
                 child.configure(state='normal')
             self.__set_run_frame()
-            self.__frame_activator(from_manual_to_automatic=0)
+            self.__frame_activator(from_manual_to_automatic=False)
 
     def __stop_processing(self):
         pass
 
-    def __frame_activator(self, from_manual_to_automatic=True):
+    def __frame_activator(self, from_manual_to_automatic: bool = True):
         if from_manual_to_automatic:
             self.input_card_path_button.configure(state='normal')
             for child in chain(self.object_list_frame.winfo_children(), self.checkbutton_frame.winfo_children()):
@@ -360,13 +371,13 @@ class ManticoreGUI(tk.Tk):
 
 
 class ManticoreController:
-    def __init__(self, launcher, launcher_type):
+    def __init__(self, launcher, launcher_type: str):
         self.start_time = launcher.START_TIME
         self.input_card_path = launcher.input_card_path
         self.data_directory_path = launcher.data_directory_path
         self.temp_directory_path = launcher.temp_directory_path
         self.files_list_file = self.temp_directory_path.joinpath('files_list.txt')
-        self.files_list = []
+        self.files_list = []    # pure names without suffixes, not pathes
         self.set_all_data = launcher.set_all_data
         self.need_to_remove_all_temp_files = launcher.need_to_remove_all_temp_files
         self.need_to_leave_temp_files_after_processing = launcher.need_to_leave_temp_files_after_processing
@@ -404,32 +415,37 @@ class ManticoreController:
                     [LauncherManipulators.static_pedestals_console_outside_manipulator,
                      LauncherManipulators.static_pedestals_console_inside_manipulator]
                                                 )
-                ManticoreEngine.dynamic_pedestals(
+                ManticoreEngine.dynamic_pedestals_old(
                     self, i,
                     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
                      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
                                                 )
-
+                ManticoreEngine.dynamic_pedestals(
+                    self, i,
+                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
+                    )
 
 class ManticoreEngine:
-    def parser(controller, manipulators: list[function, function]) -> None:
+    def parser(controller, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # FULL REWRITE. OLD FILES ARE GONE !!!
-        controller.files_list_file.touch(exist_ok = True) # FULL REWRITE !!!
+        # controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # FULL REWRITE. OLD FILES ARE GONE !!!
+        # controller.files_list_file.touch(exist_ok = True) # FULL REWRITE !!!
         list_of_objects_iterator = outside_launcher_manipulator(controller)
         for i, day_directory in list_of_objects_iterator:
+            day_files = set()
             for j, (root, dirs, files) in enumerate(os.walk(day_directory.path)):
                 if root[-5:-2] == "BSM":
                     for file in files:
-                        file = pathlib.Path(root).joinpath(file)
-                        tail = file.suffix
-                        controller.files_list.append(file)
-                        controller.list_of_objects[i].tails_dict[tail] = []
+                        file = pathlib.Path(file)
+                        day_files.add(file.stem)
+                        controller.list_of_objects[i].tails_dict[file.suffix] = []
             inside_launcher_manipulator(controller, i)
-        controller.files_list.sort()    # Is needed?
-        controller.files_list_file.write_text("\n".join([str(file) for file in controller.files_list]))
+            controller.list_of_objects[i].files_list = sorted(list(day_files))
+            # controller.files_list.append(day_files)
+        # controller.files_list_file.write_text("\n".join([str(file) for file in controller.files_list]))
 
-    def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[function, function]) -> None:
+    def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day_path = controller.list_of_objects[number_of_day_in_total_list].path
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
@@ -437,53 +453,167 @@ class ManticoreEngine:
         day_ped_path_contains_size = len(day_ped_path_contains)
         list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
         for k, ped_file in list_of_ped_files_iterator:
+            PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
             counter = 0
-            PED = []
-            PED_av = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
-            PED_sigma = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
-            ignore_status = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_ignore_int)
-            sigma_sigma = 0
             with open(ped_file, "rb") as ped_fin:
                 chunk = ped_fin.read(controller.constants.chunk_size)
                 while chunk:
                     ped_array = np.array(
-                        struct.unpack("<64h", chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]),
+                        struct.unpack(
+                            "<64h",
+                            chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]
+                            ),
                         dtype=controller.constants.IACT_float
-                                         )
-                    ped_array = ped_array.reshape(1, controller.constants.number_of_codes)
-                    ped_array /= 4
-                    PED.append(ped_array)
-                    PED_av += ped_array
+                        ).reshape(1, controller.constants.number_of_codes)/4
+                    PED = np.vstack((PED, ped_array))
                     counter += 1
                     chunk = ped_fin.read(controller.constants.chunk_size)
-            PED_av /= counter
-            for line in PED:
-                PED_sigma += np.absolute(line - PED_av)
-            PED_sigma /= counter
+            PED = PED[1:]
+            PED_av = np.divide(np.sum(PED, axis=0), counter, where=counter!=0).reshape(1, controller.constants.number_of_codes)
+            PED_sigma = np.sum(np.divide(np.absolute(PED - PED_av), counter, where=counter!=0), axis=0).reshape(1, controller.constants.number_of_codes)
             sigma_av = np.average(PED_sigma)
-            sigma_sigma = np.sqrt(np.sum((sigma_av - PED_sigma[0])**2)/len(PED_sigma[0]))
-            # TODO: Is not elegant, but works and fast enough.
-            # Don't understand, why generator below counts uncorrect values:
-            # ignore_status_1[0] = [(i%2 + 1) if (np.absolute(elem) > np.absolute(sigma_av + 3*sigma_sigma)) else 0 for i, elem in enumerate(PED_av[0])]
-            for i in range(len(PED_av[0])):
-                if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma):
-                    ignore_status[0][i] = (i%2 +1)
+            sigma_sigma = np.sqrt(np.sum((np.average(PED_sigma) - PED_sigma)**2)/len(PED_sigma))
+            ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
+            # ------------------------------------------------------------------
+            # PED_av = struct.pack('<64f', *PED_av)
+            # PED_sigma = struct.pack('<64f', *PED_sigma)
+            # ignore_status = struct.pack('<64B', *ignore_status)
             # ------------------------------------------------------------------
             inside_launcher_manipulator(controller, k, day_ped_path_contains_size)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(struct.pack('<64f', *PED_av[0]))
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(struct.pack('<64f', *PED_sigma[0]))
-            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(struct.pack('<64B', *ignore_status[0]))
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(PED_av)
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(PED_sigma)
+            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(ignore_status)
 
-
-    def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[function, function]) -> None:
+    def dynamic_pedestals_old(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day_path = controller.list_of_objects[number_of_day_in_total_list].path
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
-        day_ped_path_contains_size = len(day_ped_path_contains)
-        list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
-        print(controller.list_of_objects[number_of_day_in_total_list].tails_dict)
-        print(controller.constants.BSM_list)
+        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
+        tails_number = len(tails_list)
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+
+        for k, tail in list_of_tails_iterator:
+            for j, BSM_number in enumerate(controller.constants.BSM_list):
+                next_file_in_current_tail_bunch = day_path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(
+                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
+                            tail)
+
+                counter = [0]*controller.constants.number_of_codes
+                PED = []
+                PED_av = [0]*controller.constants.number_of_codes
+                PED_sum = [0]*controller.constants.number_of_codes
+                PED_sigma = [0]*controller.constants.number_of_codes
+                sigma_sigma = 0
+                ignore_status = [0]*controller.constants.number_of_codes
+                chunk_counter = 0
+
+                with open(next_file_in_current_tail_bunch, "rb") as codes_fin:
+                    chunk = codes_fin.read(controller.constants.chunk_size)
+                    while chunk and chunk_counter < 100:
+                        codes_array = list(
+                            struct.unpack(
+                                "<64h",
+                                chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]
+                                )
+                            )
+                        for i in range(0, len(codes_array), 2):
+                            trigger_indicator = int(bin(codes_array[i])[-1])
+                            if trigger_indicator == 1:
+                                codes_array[i] = 0
+                                codes_array[i+1] = 0
+                            else:
+                                counter[i] += 1
+                                counter[i+1] += 1
+                        for i in range(controller.constants.number_of_codes):
+                            if codes_array[i] != 0:
+                                codes_array[i] /= 4
+                        PED.append(codes_array)
+                        for i in range(controller.constants.number_of_codes):
+                            PED_av[i] += codes_array[i] 
+                        chunk = codes_fin.read(controller.constants.chunk_size)
+                        chunk_counter += 1
+                for i in range(controller.constants.number_of_codes):
+                    if counter[i] != 0:
+                        PED_av[i] /= counter[i]
+                for line in PED:
+                    for i in range(len(line)):
+                        line[i] = np.sqrt((line[i] - PED_av[i])*(line[i] - PED_av[i]))
+                for line in PED:
+                    for i in range(len(line)):
+                        PED_sum[i] += line[i]
+                for i in range(controller.constants.number_of_codes):
+                    PED_sigma[i] = PED_sum[i]/counter[i]
+                sigma_av = sum(PED_sigma)/len(PED_sigma)
+                for item in PED_sigma:
+                    sigma_sigma += (sigma_av - item)**2
+                sigma_sigma = np.sqrt(sigma_sigma/len(PED_sigma))
+                for i in range(len(PED_av)):
+                    if not (-1*sigma_av - 3*sigma_sigma < PED_sigma[i] < sigma_av + 3*sigma_sigma):
+                        ignore_status[i] += (i%2 +1)
+
+                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_old[j].append(PED_av)
+                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_old[j].append(PED_sigma)
+                controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_old[j].append(ignore_status)
+
+            inside_launcher_manipulator(controller, k, tails_number)
+
+    def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+        day_path = controller.list_of_objects[number_of_day_in_total_list].path
+        day_name = controller.list_of_objects[number_of_day_in_total_list].name
+        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
+        tails_number = len(tails_list)
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_1 = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_1 = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_1 = [[] for i in range(controller.constants.BSM_number)]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+
+        for k, tail in list_of_tails_iterator:
+            for j, BSM_number in enumerate(controller.constants.BSM_list):
+                next_file_in_current_tail_bunch = day_path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(
+                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
+                            tail)
+
+                counter = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
+                PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
+                chunk_counter = 0
+                with open(next_file_in_current_tail_bunch, "rb") as codes_fin:
+                    chunk = codes_fin.read(controller.constants.chunk_size)
+                    while chunk and chunk_counter < 100:
+                        codes_array = np.array(
+                            struct.unpack(
+                                "<64h",
+                                chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]
+                                ), # int because later we need the last bit of the each code
+                            dtype=controller.constants.IACT_codes_int
+                            ).reshape(1, controller.constants.number_of_codes)
+                        for i in range(0, len(codes_array[0]), 2):
+                            if int(bin(codes_array[0][i])[-1]) == 1:  # trigger indicator == 1
+                                codes_array[0][i:i+2] = 0
+                            else:
+                                counter[0][i:i+2] += 1
+                        # if simply "codes_array /= 4", python cannot broadcast datatype int --> float
+                        codes_array = np.divide(codes_array, 4, dtype=controller.constants.IACT_float)
+                        PED = np.vstack((PED, codes_array))
+                        chunk = codes_fin.read(controller.constants.chunk_size)
+                        chunk_counter += 1
+                PED = PED[1:]
+                PED_av = np.divide(np.sum(PED, axis=0), counter, where=(counter != 0)).reshape(1, controller.constants.number_of_codes)
+                PED_sigma = np.sum(np.divide(np.absolute(PED - PED_av), counter, where=(counter != 0)), axis=0).reshape(1, controller.constants.number_of_codes)
+                sigma_av = np.average(PED_sigma)
+                sigma_sigma = np.sqrt(np.sum((sigma_av - PED_sigma[0])**2)/len(PED_sigma[0]))
+                ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
+
+                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average[j].append(PED_av)
+                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma[j].append(PED_sigma)
+                controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack[j].append(ignore_status)
+
+            inside_launcher_manipulator(controller, k, tails_number)
 
 
 if __name__ == "__main__":
