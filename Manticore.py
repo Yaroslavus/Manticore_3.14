@@ -9,9 +9,10 @@ from tqdm import tqdm
 import struct
 import numpy as np
 from dataclasses import dataclass, field
-import math
-import sys
-from typing import List, Dict
+# import math
+# import sys
+# from typing import List, Dict
+import pandas as pd
 
 
 @dataclass
@@ -24,10 +25,6 @@ class Day:
     stat_peds_average: list = field(default_factory=list)   # python list = [numpy.ndarray, numpy.ndarray...numpy.ndarray]
     stat_peds_sigma: list = field(default_factory=list)     # each numpy array = [[float, float...float]]
     stat_ignore_pack: list = field(default_factory=list)    # with shape = (1, number of codes)
-
-    # dyn_peds_average_old: list = field(default_factory=list)    # list with shape = (BSM number, number of tails)
-    # dyn_peds_sigma_old: list = field(default_factory=list)      # each element is a list = [float, float...float]
-    # dyn_ignore_pack_old: list = field(default_factory=list)     # with len = number of codes
 
     dyn_peds_average: list = field(default_factory=list)  # python list with shape = (BSM number, number of tails)
     dyn_peds_sigma: list = field(default_factory=list)    # each element is a numpy array = [[float, float...float]]
@@ -43,6 +40,8 @@ class Constants:
     number_1_beginning_byte = 4
     number_1_ending_byte = 8
     maroc_number_byte = 20
+    channel_threshold = 3000
+    test_pedestal_bunch_size = 100
     IACT_float: np.dtype = np.float32 # np.float16, np.float32 (default in OS and preferable here), np.float64, np.float128, etc.
     IACT_ignore_int: np.dtype = np.uint8 # 0...255
     IACT_codes_int: np.dtype = np.int16 # -32768...32767
@@ -71,8 +70,8 @@ class ManticoreTools:
 
 class LauncherManipulators:
     def parser_gui_outside_manipulator(gui) -> enumerate:
-        gui.operation_name_parent_label.configure(text="Parsing input elements pathes...")
-        gui.operation_numerator_parent_label.configure(text=f'1/10')
+        gui.operation_name_parent_label.configure(text="Parsing input elements pathes")
+        gui.operation_numerator_parent_label.configure(text=f'1/5')
         return enumerate(gui.list_of_objects)
 
     def parser_gui_inside_manipulator(gui, i: int) -> None:
@@ -82,15 +81,15 @@ class LauncherManipulators:
         gui.run_frame_parent.update()
 
     def parser_console_outside_manipulator(console) -> enumerate:
-        return enumerate(tqdm(console.list_of_objects, desc="1/10 Parsing input elements pathes..."))
+        return enumerate(tqdm(console.list_of_objects, desc="1/5 Parsing input elements pathes"))
 
     def parser_console_inside_manipulator(console, i: int) -> None:
         pass
 
 
     def static_pedestals_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
-        gui.operation_name_parent_label.configure(text=f'{day_name}: Making static pedestals...')
-        gui.operation_numerator_parent_label.configure(text=f'2/10')
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making static pedestals')
+        gui.operation_numerator_parent_label.configure(text=f'2/5')
         return enumerate(list_of_ped_files)
 
     def static_pedestals_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: int) -> None:
@@ -100,15 +99,15 @@ class LauncherManipulators:
         gui.run_frame_parent.update()
 
     def static_pedestals_console_outside_manipulator(console, day_name: str, list_of_ped_files: list) -> enumerate:
-        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: 2/10 Making static pedestals...'))
+        return enumerate(tqdm(list_of_ped_files, desc=f'{day_name}: 2/5 Making static pedestals'))
 
     def static_pedestals_console_inside_manipulator(console, i: int, list_of_ped_files: list) -> None:
         pass
 
 
     def dynamic_pedestals_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
-        gui.operation_name_parent_label.configure(text=f'{day_name}: Making dynamic pedestals...')
-        gui.operation_numerator_parent_label.configure(text=f'3/10')
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making dynamic pedestals')
+        gui.operation_numerator_parent_label.configure(text=f'3/5')
         return enumerate(list_of_ped_files)
 
     def dynamic_pedestals_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: list) -> None:
@@ -118,16 +117,37 @@ class LauncherManipulators:
         gui.run_frame_parent.update()
 
     def dynamic_pedestals_console_outside_manipulator(console, day_name: str, list_of_tails: list) -> enumerate:
-        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 3/10 Making dynamic pedestals...'))
+        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 3/5 Making dynamic pedestals'))
 
     def dynamic_pedestals_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
         pass
 
 
-    def amplitudes_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list, pedestals_flag: str) -> enumerate:
-        gui.operation_name_parent_label.configure(text=f'{day_name}: Making {pedestals_flag} amplitudes...')
-        gui.operation_numerator_parent_label.configure(text=f'4/10')
+    def tails_gui_outside_manipulator(gui, day_name: str, list_of_ped_files: list) -> enumerate:
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Filling tails dictionary')
+        gui.operation_numerator_parent_label.configure(text=f'4/5')
         return enumerate(list_of_ped_files)
+
+    def tails_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: list) -> None:
+        gui.progressbar_parent_value_var.set((i+1)*100//list_of_ped_files_size)
+        gui.percent_parent_value_label.configure(text=f'{gui.progressbar_parent_value_var.get()} %')
+        gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
+        gui.run_frame_parent.update()
+
+    def tails_console_outside_manipulator(console, day_name: str, list_of_tails: list) -> enumerate:
+        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 4/5 Filling tails dictionary'))
+
+    def tails_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
+        pass
+
+
+    def amplitudes_gui_outside_manipulator(gui, day_name: str, tails_list: list) -> enumerate:
+        gui.operation_name_parent_label.configure(text=f'{day_name}: Making events amplitudes')
+        gui.operation_numerator_parent_label.configure(text=f'5/5')
+        # first_tail = list(tails_dict.keys())[0]
+        # last_tail = list(tails_dict.keys())[-1]
+        # return range(tails_dict[first_tail][0], tails_dict[last_tail][1])
+        return enumerate(tails_list)
 
     def amplitudes_gui_inside_manipulator(gui, i: int, list_of_ped_files_size: list) -> None:
         gui.progressbar_parent_value_var.set((i+1)*100//list_of_ped_files_size)
@@ -135,8 +155,12 @@ class LauncherManipulators:
         gui.time_from_start_parent_label.configure(text=ManticoreTools.time_check(gui.start_time))
         gui.run_frame_parent.update()
 
-    def amplitudes_console_outside_manipulator(console, day_name: str, list_of_tails: list, pedestals_flag: str) -> enumerate:
-        return enumerate(tqdm(list_of_tails, desc=f'{day_name}: 4/10 Making {pedestals_flag} amplitudes...'))
+    def amplitudes_console_outside_manipulator(console, day_name: str, tails_list: list) -> enumerate:
+        # first_tail = list(tails_dict.keys())[0]
+        # last_tail = list(tails_dict.keys())[-1]
+        # return tqdm(range(tails_dict[first_tail][0], tails_dict[last_tail][1]),
+        #             desc=f'{day_name}: 5/5 Making events amplitudes...')
+        return enumerate(tqdm(tails_list, desc=f'{day_name}: 5/5 Making events amplitudes'))
 
     def amplitudes_console_inside_manipulator(console, i: int, list_of_tails: list) -> None:
         pass
@@ -428,26 +452,31 @@ class ManticoreController:
             ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
                                           LauncherManipulators.parser_console_inside_manipulator])
             for i in range(self.list_of_objects_size):
-                # ManticoreEngine.static_pedestals(
-                #     self, i,
-                #     [LauncherManipulators.static_pedestals_console_outside_manipulator,
-                #      LauncherManipulators.static_pedestals_console_inside_manipulator]
-                #                                 )
+                ManticoreEngine.static_pedestals(
+                    self, i,
+                    [LauncherManipulators.static_pedestals_console_outside_manipulator,
+                     LauncherManipulators.static_pedestals_console_inside_manipulator]
+                                                )
                 # ManticoreEngine.dynamic_pedestals_old(
                 #     self, i,
                 #     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
                 #      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
                 #                                 )
-                # ManticoreEngine.dynamic_pedestals(
-                #     self, i,
-                #     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
-                #      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
-                #     )
-                ManticoreEngine.take_amplitudes_old(
-                    self, 0, i,
-                    [LauncherManipulators.amplitudes_console_outside_manipulator,
-                     LauncherManipulators.amplitudes_console_inside_manipulator]
+                ManticoreEngine.dynamic_pedestals(
+                    self, i,
+                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
+                    )
+                ManticoreEngine.fill_tails_dict(
+                    self, i,
+                    [LauncherManipulators.tails_console_outside_manipulator,
+                     LauncherManipulators.tails_console_inside_manipulator]
                                                 )
+                # ManticoreEngine.make_clean_amplitudes(
+                #     self, i,
+                #     [LauncherManipulators.amplitudes_console_outside_manipulator,
+                #      LauncherManipulators.amplitudes_console_inside_manipulator]
+                #                                 )
 
 class ManticoreEngine:
     def parser(controller, manipulators: list[callable, callable]) -> None:
@@ -585,14 +614,18 @@ class ManticoreEngine:
             inside_launcher_manipulator(controller, k, tails_number)
 
     def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        root = pathlib.Path(__file__).parent
+        out_csv_file = root.joinpath(pathlib.Path("dyn_OUT").with_suffix(".csv"))
+        out_csv_file.touch(exist_ok = True)
+        out_csv_file.write_text("")
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day_path = controller.list_of_objects[number_of_day_in_total_list].path
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
         tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
         tails_number = len(tails_list)
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_1 = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_1 = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_1 = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
+        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
         list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
 
         for k, tail in list_of_tails_iterator:
@@ -607,7 +640,7 @@ class ManticoreEngine:
                 chunk_counter = 0
                 with open(next_file_in_current_tail_bunch, "rb") as codes_fin:
                     chunk = codes_fin.read(controller.constants.chunk_size)
-                    while chunk and chunk_counter < 100:
+                    while chunk and chunk_counter < controller.constants.test_pedestal_bunch_size:
                         codes_array = np.array(
                             struct.unpack(
                                 "<64h",
@@ -635,43 +668,118 @@ class ManticoreEngine:
                 controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average[j].append(PED_av)
                 controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma[j].append(PED_sigma)
                 controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack[j].append(ignore_status)
+                pd.DataFrame(PED_av).to_csv(out_csv_file, mode='a', index=False, header=False)
 
             inside_launcher_manipulator(controller, k, tails_number)
 
-    def take_amplitudes_old(controller, pedestal_flag: int, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+
+    def fill_tails_dict(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+        root = pathlib.Path(__file__).parent
+        out_csv_file = root.joinpath(pathlib.Path("OUT_tails_dict").with_suffix(".csv"))
+        out_csv_file.touch(exist_ok = True)
+        out_csv_file.write_text("")
         day_path = controller.list_of_objects[number_of_day_in_total_list].path
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
         tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
         tails_number = len(tails_list)
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_1 = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_1 = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_1 = [[] for i in range(controller.constants.BSM_number)]
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list, pedestal_flag)
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
 
         for k, tail in list_of_tails_iterator:
             opened_files_bunch = []
-            chunks = []
-            for j, BSM_number in enumerate(controller.constants.BSM_list):
+            for j in range(controller.constants.BSM_number):
                 next_file_in_current_tail_bunch = day_path.joinpath(
                     controller.constants.BSM_list[j]).joinpath(
                         controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
                             tail)
                 opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
-            chunks = [codes_fin.read(controller.constants.chunk_size) for codes_fin in opened_files_bunch]
-            while chunks:
-                print()
-                for chunk in chunks:
+            for file in opened_files_bunch:
+                chunk = file.read(controller.constants.chunk_size)
+                event_number = struct.unpack('I', chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
+                controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail].append(event_number)
+                chunk = file.read(controller.constants.chunk_size)
+                while chunk:
                     event_number = struct.unpack('I', chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
-                    print(event_number, end="  ")
-                print("\n\n")
-                break
-            break
-                # chunks = [codes_fin.read(controller.constants.chunk_size) for codes_fin in opened_files_bunch]
+                    chunk = file.read(controller.constants.chunk_size)
+                controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail].append(event_number)
+            inside_launcher_manipulator(controller, k, tails_number)
+        for key, ket_list in controller.list_of_objects[number_of_day_in_total_list].tails_dict.items():
+            controller.list_of_objects[number_of_day_in_total_list].tails_dict[key] = [np.min(ket_list), np.max(ket_list)]
+            pd.DataFrame([int(key[1:]), np.min(ket_list), np.max(ket_list)]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
+
+    def take_amplitudes_old(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        pass
+
+    def make_clean_amplitudes(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        root = pathlib.Path(__file__).parent
+        out_csv_file = root.joinpath(pathlib.Path("OUT").with_suffix(".csv"))
+        out_csv_file.touch(exist_ok = True)
+        out_csv_file.write_text("")
+        coinscidence_dict = {}
+        for BSM_number in range(controller.constants.BSM_number):
+            coinscidence_dict[BSM_number] = 0
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+        day_path = controller.list_of_objects[number_of_day_in_total_list].path
+        day_name = controller.list_of_objects[number_of_day_in_total_list].name
+        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
+        tails_number = len(tails_list)
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+        for k, tail in list_of_tails_iterator:
+            opened_files_bunch = []
+            for j in range(controller.constants.BSM_number):
+                next_file_in_current_tail_bunch = day_path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(
+                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
+                            tail)
+                opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
+            chunk_array = [file.read(controller.constants.chunk_size) for file in opened_files_bunch]
+            for i in tqdm(range(controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail][0],
+                           controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail][1]+1),
+                           desc=f'Events: '):
+                event = [i]
+                coinscidence_counter = 0
+                for k, chunk in enumerate(chunk_array):
+                    if chunk:
+                        event_number = struct.unpack(
+                            'I',
+                            chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
+                        if event_number == i:
+                            clean_amplitudes = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
+                            coinscidence_counter += 1
+                            time_array = struct.unpack('hhhh', chunk[12:20])
+                            maroc_number = struct.unpack('h', chunk[20:22])[0]
+                            ns = (time_array[0] & 0x7f)*10
+                            mks = (time_array[0] & 0xff80) >> 7
+                            mks |= (time_array[1] & 1) << 9
+                            mls = (time_array[1] & 0x7fe) >> 1
+                            s = (time_array[1] & 0xf800) >> 11
+                            s |= (time_array[2] & 1) << 5
+                            m = (time_array[2] & 0x7e) >> 1
+                            h = (time_array[2] & 0xf80) >> 7
+                            time_string = "{}:{}:{}.{}.{}.{}".format(h, m, s, mls, mks, ns)
+                            codes_array = np.array(
+                                struct.unpack(
+                                    "<64h",
+                                    chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]
+                                    ),
+                                dtype=controller.constants.IACT_float
+                                ).reshape(1, controller.constants.number_of_codes)
+                            for m in range(0, len(clean_amplitudes[0]), 2):
+                                if codes_array[0][m] <= controller.constants.channel_threshold:
+                                    clean_amplitudes[0][m] = codes_array[0][m]/4
+                                else:
+                                    clean_amplitudes[0][m:m+2] = codes_array[0][m+1]/4, 1
+                            event += [maroc_number, time_string, *clean_amplitudes[0]]
+                            chunk_array[k] = opened_files_bunch[k].read(controller.constants.chunk_size)
+                            if not chunk_array[k]:
+                                chunk_array[k] = None
+                coinscidence_dict[coinscidence_counter] += 1
+                pd.DataFrame(event).T.to_csv(out_csv_file, mode='a', index=False, header=False)
+
             inside_launcher_manipulator(controller, k, tails_number)
 
-    def take_amplitudes(controller, pedestal_flag: int, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        pass
+
+
 
 if __name__ == "__main__":
     ManticoreConsole()

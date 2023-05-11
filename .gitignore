@@ -7,6 +7,9 @@ manticore_tools.py
 MantoicoreSH.sh
 ManticoreDecoder.py
 TEMP
+dyn_OUT.csv
+OUT.csv
+OUT_tails_dict.csv
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
