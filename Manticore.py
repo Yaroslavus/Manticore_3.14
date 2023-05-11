@@ -22,13 +22,13 @@ class Day:
     path: pathlib.WindowsPath = None                        # str <----> pathlib.WindowsPath object
     files_list: list = field(default_factory=list)          # list[str, str...str]. Items are "stems" - file names without path and suffix
 
-    stat_peds_average: list = field(default_factory=list)   # python list = [numpy.ndarray, numpy.ndarray...numpy.ndarray]
-    stat_peds_sigma: list = field(default_factory=list)     # each numpy array = [[float, float...float]]
+    stat_peds_average: list = field(default_factory=list)   # python list with shape = (BSM number, number of tails)
+    stat_peds_sigma: list = field(default_factory=list)     # each element is a numpy array = [[float, float...float]]
     stat_ignore_pack: list = field(default_factory=list)    # with shape = (1, number of codes)
 
-    dyn_peds_average: list = field(default_factory=list)  # python list with shape = (BSM number, number of tails)
-    dyn_peds_sigma: list = field(default_factory=list)    # each element is a numpy array = [[float, float...float]]
-    dyn_ignore_pack: list = field(default_factory=list)   # with shape = (1, number of codes)
+    dyn_peds_average: list = field(default_factory=list)    # python list with shape = (BSM number, number of tails)
+    dyn_peds_sigma: list = field(default_factory=list)      # each element is a numpy array = [[float, float...float]]
+    dyn_ignore_pack: list = field(default_factory=list)     # with shape = (1, number of codes)
 
 
 @dataclass(frozen=True)
@@ -448,6 +448,21 @@ class ManticoreController:
                     [LauncherManipulators.static_pedestals_gui_outside_manipulator,
                      LauncherManipulators.static_pedestals_gui_inside_manipulator]
                                                 )
+                ManticoreEngine.dynamic_pedestals(
+                    self, i,
+                    [LauncherManipulators.dynamic_pedestals_gui_outside_manipulator,
+                     LauncherManipulators.dynamic_pedestals_gui_inside_manipulator]
+                    )
+                ManticoreEngine.fill_tails_dict(
+                    self, i,
+                    [LauncherManipulators.tails_gui_outside_manipulator,
+                     LauncherManipulators.tails_gui_inside_manipulator]
+                                                )
+                # ManticoreEngine.make_clean_amplitudes(
+                #     self, i,
+                #     [LauncherManipulators.amplitudes_gui_outside_manipulator,
+                #      LauncherManipulators.amplitudes_gui_inside_manipulator]
+                #                                 )
         elif launcher_type == "console":
             ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
                                           LauncherManipulators.parser_console_inside_manipulator])
@@ -457,11 +472,6 @@ class ManticoreController:
                     [LauncherManipulators.static_pedestals_console_outside_manipulator,
                      LauncherManipulators.static_pedestals_console_inside_manipulator]
                                                 )
-                # ManticoreEngine.dynamic_pedestals_old(
-                #     self, i,
-                #     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
-                #      LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
-                #                                 )
                 ManticoreEngine.dynamic_pedestals(
                     self, i,
                     [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
@@ -503,6 +513,8 @@ class ManticoreEngine:
         day_name = controller.list_of_objects[number_of_day_in_total_list].name
         day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
         day_ped_path_contains_size = len(day_ped_path_contains)
+        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
+        tails_number = len(tails_list)
         list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
         for k, ped_file in list_of_ped_files_iterator:
             PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
@@ -526,92 +538,10 @@ class ManticoreEngine:
             sigma_av = np.average(PED_sigma)
             sigma_sigma = np.sqrt(np.sum((np.average(PED_sigma) - PED_sigma)**2)/len(PED_sigma))
             ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
-            # ------------------------------------------------------------------
-            # PED_av = struct.pack('<64f', *PED_av)
-            # PED_sigma = struct.pack('<64f', *PED_sigma)
-            # ignore_status = struct.pack('<64B', *ignore_status)
-            # ------------------------------------------------------------------
             inside_launcher_manipulator(controller, k, day_ped_path_contains_size)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(PED_av)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(PED_sigma)
-            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(ignore_status)
-
-    def dynamic_pedestals_old(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        day_path = controller.list_of_objects[number_of_day_in_total_list].path
-        day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
-        tails_number = len(tails_list)
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
-
-        for k, tail in list_of_tails_iterator:
-            for j, BSM_number in enumerate(controller.constants.BSM_list):
-                next_file_in_current_tail_bunch = day_path.joinpath(
-                    controller.constants.BSM_list[j]).joinpath(
-                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
-                            tail)
-
-                counter = [0]*controller.constants.number_of_codes
-                PED = []
-                PED_av = [0]*controller.constants.number_of_codes
-                PED_sum = [0]*controller.constants.number_of_codes
-                PED_sigma = [0]*controller.constants.number_of_codes
-                sigma_sigma = 0
-                ignore_status = [0]*controller.constants.number_of_codes
-                chunk_counter = 0
-
-                with open(next_file_in_current_tail_bunch, "rb") as codes_fin:
-                    chunk = codes_fin.read(controller.constants.chunk_size)
-                    while chunk and chunk_counter < 100:
-                        codes_array = list(
-                            struct.unpack(
-                                "<64h",
-                                chunk[controller.constants.codes_beginning_byte:controller.constants.codes_ending_byte]
-                                )
-                            )
-                        for i in range(0, len(codes_array), 2):
-                            trigger_indicator = int(bin(codes_array[i])[-1])
-                            if trigger_indicator == 1:
-                                codes_array[i] = 0
-                                codes_array[i+1] = 0
-                            else:
-                                counter[i] += 1
-                                counter[i+1] += 1
-                        for i in range(controller.constants.number_of_codes):
-                            if codes_array[i] != 0:
-                                codes_array[i] /= 4
-                        PED.append(codes_array)
-                        for i in range(controller.constants.number_of_codes):
-                            PED_av[i] += codes_array[i] 
-                        chunk = codes_fin.read(controller.constants.chunk_size)
-                        chunk_counter += 1
-                for i in range(controller.constants.number_of_codes):
-                    if counter[i] != 0:
-                        PED_av[i] /= counter[i]
-                for line in PED:
-                    for i in range(len(line)):
-                        line[i] = np.sqrt((line[i] - PED_av[i])*(line[i] - PED_av[i]))
-                for line in PED:
-                    for i in range(len(line)):
-                        PED_sum[i] += line[i]
-                for i in range(controller.constants.number_of_codes):
-                    PED_sigma[i] = PED_sum[i]/counter[i]
-                sigma_av = sum(PED_sigma)/len(PED_sigma)
-                for item in PED_sigma:
-                    sigma_sigma += (sigma_av - item)**2
-                sigma_sigma = np.sqrt(sigma_sigma/len(PED_sigma))
-                for i in range(len(PED_av)):
-                    if not (-1*sigma_av - 3*sigma_sigma < PED_sigma[i] < sigma_av + 3*sigma_sigma):
-                        ignore_status[i] += (i%2 +1)
-
-                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average_old[j].append(PED_av)
-                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma_old[j].append(PED_sigma)
-                controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack_old[j].append(ignore_status)
-
-            inside_launcher_manipulator(controller, k, tails_number)
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append([PED_av for i in range(tails_number)])
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append([PED_sigma for i in range(tails_number)])
+            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append([ignore_status for i in range(tails_number)])
 
     def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         root = pathlib.Path(__file__).parent
@@ -706,9 +636,6 @@ class ManticoreEngine:
         for key, ket_list in controller.list_of_objects[number_of_day_in_total_list].tails_dict.items():
             controller.list_of_objects[number_of_day_in_total_list].tails_dict[key] = [np.min(ket_list), np.max(ket_list)]
             pd.DataFrame([int(key[1:]), np.min(ket_list), np.max(ket_list)]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
-
-    def take_amplitudes_old(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        pass
 
     def make_clean_amplitudes(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         root = pathlib.Path(__file__).parent
