@@ -9,10 +9,20 @@ from tqdm import tqdm
 import struct
 import numpy as np
 from dataclasses import dataclass, field
-# import math
-# import sys
-# from typing import List, Dict
 import pandas as pd
+
+
+@dataclass
+class Settings:
+    data_path: pathlib.WindowsPath = None
+    temp_path: pathlib.WindowsPath = None
+    create_stat_ped_file: int = 1
+    create_dyn_ped_file: int = 1
+    calculate_clean_ampls: int = 1
+    calculate_stat_ampls: int = 1
+    calculate_dyn_ampls: int = 1
+    object_list: list = field(default_factory=list)
+    all_data: str = ""
 
 
 @dataclass
@@ -52,22 +62,21 @@ class Constants:
 
 
 class ManticoreTools:
-    def get_pathes() -> tuple[str, str, str]:
+    def read_input_card() -> Settings:
         script_directory = pathlib.Path(__file__).parent
-        input_card_path = script_directory.joinpath('input_card.conf')
-        data_directory_conf_path = script_directory.joinpath('data_directory.conf')
-        temp_files_directory_conf_path = script_directory.joinpath('temporary_files_directory.conf')
-        data_directory_path = pathlib.Path(data_directory_conf_path.read_text().strip())
-        temp_files_directory_path = pathlib.Path(temp_files_directory_conf_path.read_text().strip())
-        return input_card_path, data_directory_path, temp_files_directory_path
+        input_card_path = script_directory.joinpath('input_card_1.conf')
+        with open(input_card_path, "r") as input_card:
+            settings = [line.strip() for line in input_card.readlines() if not line.startswith('#')]
+        set_all_data = 1 if settings[7] == "a" else 0
+        return Settings(data_path=pathlib.Path(settings[0]), temp_path=pathlib.Path(settings[1]),
+                        create_stat_ped_file=int(settings[2]), create_dyn_ped_file=int(settings[3]),
+                        calculate_clean_ampls=int(settings[4]), calculate_stat_ampls=int(settings[5]),
+                        calculate_dyn_ampls=int(settings[6]), object_list=settings[7].split(),
+                        all_data=set_all_data)
 
     def time_check(start_time: float) -> str:
         current_time = time.time() - start_time
         return f'[ {int(current_time//60//60):2} h {int(current_time//60%60):2} m {int(current_time%60):2} s ]'
-
-    def read_input_card(input_card_path: str) -> list[int, int, int]:
-        with open(input_card_path, "r") as input_card:
-            return [line.strip() for line in input_card.readlines() if not line.startswith('#')]
 
 
 class LauncherManipulators:
@@ -170,12 +179,7 @@ class LauncherManipulators:
 
 class ManticoreConsole:
     def __init__(self):
-        self.input_card_path, self.data_directory_path, self.temp_directory_path = ManticoreTools.get_pathes()
-        self.set_1, self.set_2, self.set_3 = ManticoreTools.read_input_card(self.input_card_path)
-        self.need_to_remove_all_temp_files = int(self.set_1)
-        self.need_to_leave_temp_files_after_processing = int(self.set_2)
-        self.objects_list = self.set_3.split()
-        self.set_all_data = 1 if self.objects_list == ["a"] else 0
+        self.settings = ManticoreTools.read_input_card()
         self.START_TIME = time.time()
         print("Launching Manticore 3.14 Controller...")
         ManticoreController(self, "console")
@@ -185,12 +189,18 @@ class ManticoreGUI(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
         self.winfo_toplevel().title("Manticore 3.14")
-        self.input_card_path, self.data_directory_path, self.temp_directory_path = ManticoreTools.get_pathes()
-        self.objects_list = []
-        self.set_1, self.set_2, self.set_all_data_var = tk.IntVar(), tk.IntVar(), tk.IntVar()
-        self.set_all_data = 0
-        self.need_to_remove_all_temp_files = 0
-        self.need_to_leave_temp_files_after_processing = 0
+        self.settings = ManticoreTools.read_input_card()
+        self.input_card_path = pathlib.Path(__file__).parent
+        self.data_path = self.settings.data_path
+        self.temp_path = self.settings.temp_path
+        self.object_list = []
+        self.set_create_stat_ped_file = tk.IntVar()
+        self.set_create_dyn_ped_file = tk.IntVar()
+        self.set_calculate_clean_ampls = tk.IntVar()
+        self.set_calculate_stat_ampls = tk.IntVar()
+        self.set_calculate_dyn_ampls = tk.IntVar()
+        self.set_all_data_var = tk.IntVar()
+        self.set_all_data = self.settings.all_data
         self.main_frame = tk.LabelFrame(self, bd=0)
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.head_frame = tk.LabelFrame(self.main_frame, text="Choose the source of settings", bd=2)
@@ -227,34 +237,34 @@ class ManticoreGUI(tk.Tk):
         automatic_settings_radiobutton.pack(side="left", padx=10, pady=10)
         manual_settings_radiobutton.pack(side="left", padx=10, pady=10)
 
-        self.data_directory_path_label = tk.Label(self.head_frame, text="Data directory:")
-        self.data_directory_path_label.pack(side="left", padx=10, pady=10)
-        self.data_directory_path_field = tk.Entry(self.head_frame, width=30)
-        self.data_directory_path_field.insert('end', self.data_directory_path)
-        self.data_directory_path_field.configure(state='disabled')
-        self.data_directory_path_field.pack(side="left", padx=5, pady=10)
-        self.data_directory_path_field.bind("<Return>", self.__change_data_directory_path)
-        self.data_directory_path_button = tk.Button(self.head_frame,
+        self.data_path_label = tk.Label(self.head_frame, text="Data directory:")
+        self.data_path_label.pack(side="left", padx=10, pady=10)
+        self.data_path_field = tk.Entry(self.head_frame, width=30)
+        self.data_path_field.insert('end', self.data_path)
+        self.data_path_field.configure(state='disabled')
+        self.data_path_field.pack(side="left", padx=5, pady=10)
+        self.data_path_field.bind("<Return>", self.__change_data_path)
+        self.data_path_button = tk.Button(self.head_frame,
                                                     text="Change path",
                                                     command=lambda: self.__set_path(
-                                                        self.data_directory_path_field)
+                                                        self.data_path_field)
                                                     )
-        self.data_directory_path_button.pack(side="left", padx=5, pady=10)
+        self.data_path_button.pack(side="left", padx=5, pady=10)
 
-        self.temp_directory_path_label = tk.Label(self.head_frame,
+        self.temp_path_label = tk.Label(self.head_frame,
                                                   text="Temporary files directory:")
-        self.temp_directory_path_label.pack(side="left", padx=15, pady=10)
-        self.temp_directory_path_field = tk.Entry(self.head_frame, width=30)
-        self.temp_directory_path_field.insert('end', self.temp_directory_path)
-        self.temp_directory_path_field.configure(state='disabled')
-        self.temp_directory_path_field.pack(side="left", padx=5, pady=10)
-        self.temp_directory_path_field.bind("<Return>", self.__change_temp_directory_path)
-        self.temp_directory_path_button = tk.Button(self.head_frame,
+        self.temp_path_label.pack(side="left", padx=15, pady=10)
+        self.temp_path_field = tk.Entry(self.head_frame, width=30)
+        self.temp_path_field.insert('end', self.temp_path)
+        self.temp_path_field.configure(state='disabled')
+        self.temp_path_field.pack(side="left", padx=5, pady=10)
+        self.temp_path_field.bind("<Return>", self.__change_temp_path)
+        self.temp_path_button = tk.Button(self.head_frame,
                                                     text="Change path",
                                                     command=lambda: self.__set_path(
-                                                        self.temp_directory_path_field)
+                                                        self.temp_path_field)
                                                     )
-        self.temp_directory_path_button.pack(side="left", padx=5, pady=10)
+        self.temp_path_button.pack(side="left", padx=5, pady=10)
 
     def __set_automatic_settings_frame(self):
         self.input_card_path_label = tk.Label(self.automatic_settings_frame,
@@ -280,20 +290,32 @@ class ManticoreGUI(tk.Tk):
         self.presets_frame.pack(side="left", padx=10, pady=10, anchor="n")
         self.checkbutton_frame = tk.Frame(self.presets_frame, bd=2)
         self.checkbutton_frame.pack(side="top", padx=10, pady=10, anchor="nw")
-        self.objects_var = tk.StringVar(value=self.objects_list)
-        self.objects_listbox = tk.Listbox(self.object_list_frame,
+        self.objects_var = tk.StringVar(value=self.object_list)
+        self.object_listbox = tk.Listbox(self.object_list_frame,
                                           listvariable=self.objects_var,
                                           selectmode='extended')
-        self.objects_listbox.pack(side="top", fill="both", expand=True, padx=10, pady=10)
-        self.objects_listbox.bind("<BackSpace>", self.__del_selected_from_listbox)
+        self.object_listbox.pack(side="top", fill="both", expand=True, padx=10, pady=10)
+        self.object_listbox.bind("<BackSpace>", self.__del_selected_from_listbox)
         self.set_1_check = tk.Checkbutton(
-            self.checkbutton_frame, variable=self.set_1,
-            text="Delete existing temporary files before processing and start with new raw processing")
+            self.checkbutton_frame, variable=self.set_create_stat_ped_file,
+            text="Create file with static pedestals")
         self.set_1_check.pack(side="top", padx=10, pady=10, anchor="nw")
         self.set_2_check = tk.Checkbutton(
-            self.checkbutton_frame, variable=self.set_2,
-            text="To leave all the temporary files after processing finish")
+            self.checkbutton_frame, variable=self.set_create_dyn_ped_file,
+            text="Create file with dynamic pedestals")
         self.set_2_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_3_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_clean_ampls,
+            text="Create file with clean amplitudes")
+        self.set_3_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_4_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_stat_ampls,
+            text="Create file with amplitudes normalized for static pedestals")
+        self.set_4_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_5_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_dyn_ampls,
+            text="Create file with amplitudes normalized for dynamic pedestals")
+        self.set_5_check.pack(side="top", padx=10, pady=10, anchor="nw")
         self.set_all = tk.Checkbutton(
             self.checkbutton_frame, variable=self.set_all_data_var,
             text="Process all data", command=self.__choose_all_data)
@@ -310,25 +332,25 @@ class ManticoreGUI(tk.Tk):
         if self.add_button['state'] == 'normal':
             self.add_button.configure(state='disabled')
             self.new_item_field.configure(state='disabled')
-            self.objects_listbox.configure(state='disabled')
+            self.object_listbox.configure(state='disabled')
         else:
             self.add_button.configure(state='normal')
             self.new_item_field.configure(state='normal')
-            self.objects_listbox.configure(state='normal')
+            self.object_listbox.configure(state='normal')
 
     def __add_item_to_listbox(self, event):
         item_list = self.new_item_field.get().split()
         for item in item_list:
-            self.objects_listbox.insert('end', item)
-            self.objects_list.append(item)
+            self.object_listbox.insert('end', item)
+            self.object_list.append(item)
         self.new_item_field.delete(0, 'end')
 
     def __del_selected_from_listbox(self, event):
-        select = list(self.objects_listbox.curselection())
+        select = list(self.object_listbox.curselection())
         select.reverse()
         for i in select:
-            self.objects_listbox.delete(i)
-            self.objects_list.pop(i)
+            self.object_listbox.delete(i)
+            self.object_list.pop(i)
 
     def __set_run_frame(self):
         self.run_button = tk.Button(
@@ -363,20 +385,26 @@ class ManticoreGUI(tk.Tk):
         self.__run()
 
     def __run(self):
-        self.set_all_data = 1 if (self.objects_list == ["a"] or self.set_all_data_var.get()) else 0
-        self.need_to_remove_all_temp_files = self.set_1.get()
-        self.need_to_leave_temp_files_after_processing = self.set_2.get()
+        self.set_all_data = 1 if (self.object_list == ["a"] or self.set_all_data_var.get()) else 0
+        self.settings = Settings(data_path=self.data_path, temp_path=self.temp_path,
+                                 create_stat_ped_file=self.set_create_stat_ped_file.get(),
+                                 create_dyn_ped_file=self.set_create_dyn_ped_file.get(),
+                                 calculate_clean_ampls=self.set_calculate_clean_ampls.get(),
+                                 calculate_stat_ampls=self.set_calculate_stat_ampls.get(),
+                                 calculate_dyn_ampls=self.set_calculate_dyn_ampls.get(),
+                                 object_list=self.object_list, all_data=self.set_all_data)
         ManticoreController(self, "gui")
 
     def __stop(self):
         if askyesno(title="Processing stop!",
-                    message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
+                    message="Do you really want to stop the processing? All created files will NOT be deleted."):
             self.__stop_processing()
             self.run_frame.destroy()
             self.run_frame = tk.LabelFrame(self.main_frame, text="Run", bd=2)
             self.run_frame.pack(fill="both", expand=False, padx=10, pady=10)
             for child in self.head_frame.winfo_children():
-                child.configure(state='normal')
+                if child not in [self.data_path_field, self.temp_path_field]:
+                    child.configure(state='normal')
             self.__set_run_frame()
             self.__frame_activator(from_manual_to_automatic=False)
 
@@ -403,28 +431,23 @@ class ManticoreGUI(tk.Tk):
         self.input_card_path_field.configure(state='disabled')
         self.input_card_path_field.update()
 
-    def __change_data_directory_path(self, event):
-        self.data_directory_path = pathlib.Path(self.data_directory_path_field.get())
-        self.data_directory_path_field.configure(state='disabled')
-        self.data_directory_path_field.update()
+    def __change_data_path(self, event):
+        self.data_path = pathlib.Path(self.data_path_field.get())
+        self.data_path_field.configure(state='disabled')
+        self.data_path_field.update()
 
-    def __change_temp_directory_path(self, event):
-        self.temp_directory_path = pathlib.Path(self.temp_directory_path_field.get())
-        self.temp_directory_path_field.configure(state='disabled')
-        self.temp_directory_path_field.update()
+    def __change_temp_path(self, event):
+        self.temp_path = pathlib.Path(self.temp_path_field.get())
+        self.temp_path_field.configure(state='disabled')
+        self.temp_path_field.update()
 
 
 class ManticoreController:
     def __init__(self, launcher, launcher_type: str):
         self.start_time = launcher.START_TIME
-        self.input_card_path = launcher.input_card_path
-        self.data_directory_path = launcher.data_directory_path
-        self.temp_directory_path = launcher.temp_directory_path
-        self.files_list_file = self.temp_directory_path.joinpath('files_list.txt')
+        self.settings = launcher.settings
         self.files_list = []    # pure names without suffixes, not pathes
-        self.set_all_data = launcher.set_all_data
-        self.need_to_remove_all_temp_files = launcher.need_to_remove_all_temp_files
-        self.need_to_leave_temp_files_after_processing = launcher.need_to_leave_temp_files_after_processing
+        # self.set_all_data = launcher.set_all_data
         self.constants = Constants()
         if launcher_type == "gui":
             self.run_frame_parent = launcher.run_frame
@@ -433,12 +456,13 @@ class ManticoreController:
             self.progressbar_parent_value_var = launcher.progressbar_value_var
             self.percent_parent_value_label = launcher.percents
             self.time_from_start_parent_label = launcher.time_label
-        if self.set_all_data:
-            self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in self.data_directory_path.iterdir() if os.path.isdir(day)]
+        if self.settings.all_data:
+            self.list_of_objects = [Day(name=day, path=self.settings.data_path.joinpath(day)) for day in self.settings.data_path.iterdir() if os.path.isdir(day)]
         else:
-            self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in launcher.objects_list if os.path.isdir(self.data_directory_path.joinpath(day))]
+            self.list_of_objects = [Day(name=day, path=self.settings.data_path.joinpath(day)) for day in self.settings.object_list if os.path.isdir(self.settings.data_path.joinpath(day))]
         self.list_of_objects_size = len(self.list_of_objects)
-        self.start_engine(launcher_type)
+        print(self.settings)
+        # self.start_engine(launcher_type)
 
     def start_engine(self, launcher_type):
         if launcher_type == "gui":
@@ -499,7 +523,7 @@ class ManticoreEngine:
 
     def parser(controller, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # IS FULL REWRITE??? OLD FILES ARE GONE???
+        controller.settings.temp_path.mkdir(parents = False, exist_ok = True) # IS FULL REWRITE??? OLD FILES ARE GONE???
         list_of_objects_iterator = outside_launcher_manipulator(controller)
         for i, day_directory in list_of_objects_iterator:
             day_files = set()
@@ -706,5 +730,5 @@ class ManticoreEngine:
 
 
 if __name__ == "__main__":
-    ManticoreConsole()
-    # ManticoreGUI().mainloop()
+    # ManticoreConsole()
+    ManticoreGUI().mainloop()
