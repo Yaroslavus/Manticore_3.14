@@ -10,6 +10,7 @@ TEMP
 dyn_OUT.csv
 OUT.csv
 OUT_tails_dict.csv
+OUT_1.csv
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

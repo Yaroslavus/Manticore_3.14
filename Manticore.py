@@ -19,6 +19,8 @@ import pandas as pd
 class Day:
     name: str = None
     tails_dict: dict = field(default_factory=dict)          # dict = {str: list[min_event, max_event]}
+    tails_list: list = field(default_factory=list)
+    tails_number: int = 0
     path: pathlib.WindowsPath = None                        # str <----> pathlib.WindowsPath object
     files_list: list = field(default_factory=list)          # list[str, str...str]. Items are "stems" - file names without path and suffix
 
@@ -489,10 +491,15 @@ class ManticoreController:
                 #                                 )
 
 class ManticoreEngine:
+    def create_empty_csv_out_file(name: str) -> None:
+        root = pathlib.Path(__file__).parent
+        out_csv_file = root.joinpath(pathlib.Path(name).with_suffix(".csv"))
+        out_csv_file.touch(exist_ok = True)
+        out_csv_file.write_text("")
+
     def parser(controller, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        # controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # FULL REWRITE. OLD FILES ARE GONE !!!
-        # controller.files_list_file.touch(exist_ok = True) # FULL REWRITE !!!
+        controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # IS FULL REWRITE??? OLD FILES ARE GONE???
         list_of_objects_iterator = outside_launcher_manipulator(controller)
         for i, day_directory in list_of_objects_iterator:
             day_files = set()
@@ -504,18 +511,19 @@ class ManticoreEngine:
                         controller.list_of_objects[i].tails_dict[file.suffix] = []
             inside_launcher_manipulator(controller, i)
             controller.list_of_objects[i].files_list = sorted(list(day_files))
-            # controller.files_list.append(day_files)
-        # controller.files_list_file.write_text("\n".join([str(file) for file in controller.files_list]))
+            controller.list_of_objects[i].tails_list = list(controller.list_of_objects[i].tails_dict.keys())
+            controller.list_of_objects[i].tails_number = len(controller.list_of_objects[i].tails_list)
 
     def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        # root = pathlib.Path(__file__).parent
+        # out_csv_file = root.joinpath(pathlib.Path("OUT_stat").with_suffix(".csv"))
+        # out_csv_file.touch(exist_ok = True)
+        # out_csv_file.write_text("")
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        day_path = controller.list_of_objects[number_of_day_in_total_list].path
-        day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        day_ped_path_contains = sorted(day_path.joinpath("PED").iterdir())
+        day = controller.list_of_objects[number_of_day_in_total_list]
+        day_ped_path_contains = sorted(day.path.joinpath("PED").iterdir())
         day_ped_path_contains_size = len(day_ped_path_contains)
-        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
-        tails_number = len(tails_list)
-        list_of_ped_files_iterator = outside_launcher_manipulator(controller, day_name, day_ped_path_contains)
+        list_of_ped_files_iterator = outside_launcher_manipulator(controller, day.name, day_ped_path_contains)
         for k, ped_file in list_of_ped_files_iterator:
             PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
             counter = 0
@@ -539,31 +547,29 @@ class ManticoreEngine:
             sigma_sigma = np.sqrt(np.sum((np.average(PED_sigma) - PED_sigma)**2)/len(PED_sigma))
             ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
             inside_launcher_manipulator(controller, k, day_ped_path_contains_size)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append([PED_av for i in range(tails_number)])
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append([PED_sigma for i in range(tails_number)])
-            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append([ignore_status for i in range(tails_number)])
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(
+                [PED_av for i in range(day.tails_number)])
+            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(
+                [PED_sigma for i in range(day.tails_number)])
+            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(
+                [ignore_status for i in range(day.tails_number)])
 
     def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        root = pathlib.Path(__file__).parent
-        out_csv_file = root.joinpath(pathlib.Path("dyn_OUT").with_suffix(".csv"))
-        out_csv_file.touch(exist_ok = True)
-        out_csv_file.write_text("")
+        # root = pathlib.Path(__file__).parent
+        # out_csv_file = root.joinpath(pathlib.Path("dyn_OUT").with_suffix(".csv"))
+        # out_csv_file.touch(exist_ok = True)
+        # out_csv_file.write_text("")
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        day_path = controller.list_of_objects[number_of_day_in_total_list].path
-        day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
-        tails_number = len(tails_list)
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
-        controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+        day = controller.list_of_objects[number_of_day_in_total_list]
+        day.dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
+        day.dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
+        day.dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day.name, day.tails_list)
 
         for k, tail in list_of_tails_iterator:
             for j, BSM_number in enumerate(controller.constants.BSM_list):
-                next_file_in_current_tail_bunch = day_path.joinpath(
-                    controller.constants.BSM_list[j]).joinpath(
-                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
-                            tail)
+                next_file_in_current_tail_bunch = day.path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(day.files_list[j]).with_suffix(tail)
 
                 counter = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
                 PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
@@ -593,51 +599,49 @@ class ManticoreEngine:
                 PED_sigma = np.sum(np.divide(np.absolute(PED - PED_av), counter, where=(counter != 0)), axis=0).reshape(1, controller.constants.number_of_codes)
                 sigma_av = np.average(PED_sigma)
                 sigma_sigma = np.sqrt(np.sum((sigma_av - PED_sigma[0])**2)/len(PED_sigma[0]))
-                ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
+                ignore_status = np.array(
+                    [(i%2 + 1) if (
+                        np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(
+                        len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
 
-                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_average[j].append(PED_av)
-                controller.list_of_objects[number_of_day_in_total_list].dyn_peds_sigma[j].append(PED_sigma)
-                controller.list_of_objects[number_of_day_in_total_list].dyn_ignore_pack[j].append(ignore_status)
-                pd.DataFrame(PED_av).to_csv(out_csv_file, mode='a', index=False, header=False)
+                day.dyn_peds_average[j].append(PED_av)
+                day.dyn_peds_sigma[j].append(PED_sigma)
+                day.dyn_ignore_pack[j].append(ignore_status)
+                # pd.DataFrame(PED_av).to_csv(out_csv_file, mode='a', index=False, header=False)
 
-            inside_launcher_manipulator(controller, k, tails_number)
-
+            inside_launcher_manipulator(controller, k, day.tails_number)
 
     def fill_tails_dict(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        root = pathlib.Path(__file__).parent
-        out_csv_file = root.joinpath(pathlib.Path("OUT_tails_dict").with_suffix(".csv"))
-        out_csv_file.touch(exist_ok = True)
-        out_csv_file.write_text("")
-        day_path = controller.list_of_objects[number_of_day_in_total_list].path
-        day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
-        tails_number = len(tails_list)
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+        # root = pathlib.Path(__file__).parent
+        # out_csv_file = root.joinpath(pathlib.Path("OUT_tails_dict").with_suffix(".csv"))
+        # out_csv_file.touch(exist_ok = True)
+        # out_csv_file.write_text("")
+        day = controller.list_of_objects[number_of_day_in_total_list]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day.name, day.tails_list)
 
         for k, tail in list_of_tails_iterator:
             opened_files_bunch = []
             for j in range(controller.constants.BSM_number):
-                next_file_in_current_tail_bunch = day_path.joinpath(
-                    controller.constants.BSM_list[j]).joinpath(
-                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
-                            tail)
+                next_file_in_current_tail_bunch = day.path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(day.files_list[j]).with_suffix(tail)
                 opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
             for file in opened_files_bunch:
                 chunk = file.read(controller.constants.chunk_size)
                 event_number = struct.unpack('I', chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
-                controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail].append(event_number)
+                day.tails_dict[tail].append(event_number)
                 chunk = file.read(controller.constants.chunk_size)
                 while chunk:
                     event_number = struct.unpack('I', chunk[controller.constants.number_1_beginning_byte:controller.constants.number_1_ending_byte])[0]
                     chunk = file.read(controller.constants.chunk_size)
-                controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail].append(event_number)
-            inside_launcher_manipulator(controller, k, tails_number)
-        for key, ket_list in controller.list_of_objects[number_of_day_in_total_list].tails_dict.items():
-            controller.list_of_objects[number_of_day_in_total_list].tails_dict[key] = [np.min(ket_list), np.max(ket_list)]
-            pd.DataFrame([int(key[1:]), np.min(ket_list), np.max(ket_list)]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
+                day.tails_dict[tail].append(event_number)
+            inside_launcher_manipulator(controller, k, day.tails_number)
+        for key, key_list in day.tails_dict.items():
+            day.tails_dict[key] = [np.min(key_list), np.max(key_list)]
+            # pd.DataFrame([int(key[1:]), *day.tails_dict[key]]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
 
     def make_clean_amplitudes(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+        day = controller.list_of_objects[number_of_day_in_total_list]
         root = pathlib.Path(__file__).parent
         out_csv_file = root.joinpath(pathlib.Path("OUT").with_suffix(".csv"))
         out_csv_file.touch(exist_ok = True)
@@ -646,23 +650,16 @@ class ManticoreEngine:
         for BSM_number in range(controller.constants.BSM_number):
             coinscidence_dict[BSM_number] = 0
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        day_path = controller.list_of_objects[number_of_day_in_total_list].path
-        day_name = controller.list_of_objects[number_of_day_in_total_list].name
-        tails_list = list(controller.list_of_objects[number_of_day_in_total_list].tails_dict.keys())
-        tails_number = len(tails_list)
-        list_of_tails_iterator = outside_launcher_manipulator(controller, day_name, tails_list)
+        day = controller.list_of_objects[number_of_day_in_total_list]
+        list_of_tails_iterator = outside_launcher_manipulator(controller, day.name, day.tails_list)
         for k, tail in list_of_tails_iterator:
             opened_files_bunch = []
             for j in range(controller.constants.BSM_number):
-                next_file_in_current_tail_bunch = day_path.joinpath(
-                    controller.constants.BSM_list[j]).joinpath(
-                        controller.list_of_objects[number_of_day_in_total_list].files_list[j]).with_suffix(
-                            tail)
+                next_file_in_current_tail_bunch = day.path.joinpath(
+                    controller.constants.BSM_list[j]).joinpath(day.files_list[j]).with_suffix(tail)
                 opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
             chunk_array = [file.read(controller.constants.chunk_size) for file in opened_files_bunch]
-            for i in tqdm(range(controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail][0],
-                           controller.list_of_objects[number_of_day_in_total_list].tails_dict[tail][1]+1),
-                           desc=f'Events: '):
+            for i in tqdm(range(day.tails_dict[tail][0], day.tails_dict[tail][1]+1), desc=f'Events: '):
                 event = [i]
                 coinscidence_counter = 0
                 for k, chunk in enumerate(chunk_array):
@@ -703,7 +700,7 @@ class ManticoreEngine:
                 coinscidence_dict[coinscidence_counter] += 1
                 pd.DataFrame(event).T.to_csv(out_csv_file, mode='a', index=False, header=False)
 
-            inside_launcher_manipulator(controller, k, tails_number)
+            inside_launcher_manipulator(controller, k, day.tails_number)
 
 
 
