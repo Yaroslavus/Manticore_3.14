@@ -1,16 +1,6 @@
-manticore_decoding.py
-manticore_main.py
-manticore_parser.py
-manticore_preprocessing_1.py
-manticore_preprocessing.py
-manticore_tools.py
 MantoicoreSH.sh
-ManticoreDecoder.py
 TEMP
-dyn_OUT.csv
-OUT.csv
-OUT_tails_dict.csv
-OUT_1.csv
+Manticore_some_draft.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

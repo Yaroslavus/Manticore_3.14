@@ -9,10 +9,20 @@ from tqdm import tqdm
 import struct
 import numpy as np
 from dataclasses import dataclass, field
-# import math
-# import sys
-# from typing import List, Dict
 import pandas as pd
+
+
+@dataclass
+class Settings:
+    data_path: pathlib.WindowsPath = None
+    temp_path: pathlib.WindowsPath = None
+    create_stat_ped_file: int = 1
+    create_dyn_ped_file: int = 1
+    calculate_clean_ampls: int = 1
+    calculate_stat_ampls: int = 1
+    calculate_dyn_ampls: int = 1
+    object_list: list = field(default_factory=list)
+    all_data: int = 0
 
 
 @dataclass
@@ -24,13 +34,13 @@ class Day:
     path: pathlib.WindowsPath = None                        # str <----> pathlib.WindowsPath object
     files_list: list = field(default_factory=list)          # list[str, str...str]. Items are "stems" - file names without path and suffix
 
-    stat_peds_average: list = field(default_factory=list)   # python list with shape = (BSM number, number of tails)
-    stat_peds_sigma: list = field(default_factory=list)     # each element is a numpy array = [[float, float...float]]
-    stat_ignore_pack: list = field(default_factory=list)    # with shape = (1, number of codes)
+    stat_peds_average: list = field(default_factory=list)   # after calculating and reshaping - numpy array with
+    stat_peds_sigma: list = field(default_factory=list)     # shape = (tails_number, BSM_number, number_of_codes)
+    stat_ignore_pack: list = field(default_factory=list)    # each element is float
 
-    dyn_peds_average: list = field(default_factory=list)    # python list with shape = (BSM number, number of tails)
-    dyn_peds_sigma: list = field(default_factory=list)      # each element is a numpy array = [[float, float...float]]
-    dyn_ignore_pack: list = field(default_factory=list)     # with shape = (1, number of codes)
+    dyn_peds_average: list = field(default_factory=list)    # after calculating and reshaping - numpy array with
+    dyn_peds_sigma: list = field(default_factory=list)      # shape = (tails_number, BSM_number, number_of_codes)
+    dyn_ignore_pack: list = field(default_factory=list)     # each element is float
 
 
 @dataclass(frozen=True)
@@ -52,22 +62,21 @@ class Constants:
 
 
 class ManticoreTools:
-    def get_pathes() -> tuple[str, str, str]:
+    def read_input_card() -> Settings:
         script_directory = pathlib.Path(__file__).parent
         input_card_path = script_directory.joinpath('input_card.conf')
-        data_directory_conf_path = script_directory.joinpath('data_directory.conf')
-        temp_files_directory_conf_path = script_directory.joinpath('temporary_files_directory.conf')
-        data_directory_path = pathlib.Path(data_directory_conf_path.read_text().strip())
-        temp_files_directory_path = pathlib.Path(temp_files_directory_conf_path.read_text().strip())
-        return input_card_path, data_directory_path, temp_files_directory_path
+        with open(input_card_path, "r") as input_card:
+            settings = [line.strip() for line in input_card.readlines() if not line.startswith('#')]
+        set_all_data = 1 if settings[7] == "a" else 0
+        return Settings(data_path=pathlib.Path(settings[0]), temp_path=pathlib.Path(settings[1]),
+                        create_stat_ped_file=int(settings[2]), create_dyn_ped_file=int(settings[3]),
+                        calculate_clean_ampls=int(settings[4]), calculate_stat_ampls=int(settings[5]),
+                        calculate_dyn_ampls=int(settings[6]), object_list=settings[7].split(),
+                        all_data=set_all_data)
 
     def time_check(start_time: float) -> str:
         current_time = time.time() - start_time
         return f'[ {int(current_time//60//60):2} h {int(current_time//60%60):2} m {int(current_time%60):2} s ]'
-
-    def read_input_card(input_card_path: str) -> list[int, int, int]:
-        with open(input_card_path, "r") as input_card:
-            return [line.strip() for line in input_card.readlines() if not line.startswith('#')]
 
 
 class LauncherManipulators:
@@ -170,12 +179,7 @@ class LauncherManipulators:
 
 class ManticoreConsole:
     def __init__(self):
-        self.input_card_path, self.data_directory_path, self.temp_directory_path = ManticoreTools.get_pathes()
-        self.set_1, self.set_2, self.set_3 = ManticoreTools.read_input_card(self.input_card_path)
-        self.need_to_remove_all_temp_files = int(self.set_1)
-        self.need_to_leave_temp_files_after_processing = int(self.set_2)
-        self.objects_list = self.set_3.split()
-        self.set_all_data = 1 if self.objects_list == ["a"] else 0
+        self.settings = ManticoreTools.read_input_card()
         self.START_TIME = time.time()
         print("Launching Manticore 3.14 Controller...")
         ManticoreController(self, "console")
@@ -185,12 +189,18 @@ class ManticoreGUI(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
         self.winfo_toplevel().title("Manticore 3.14")
-        self.input_card_path, self.data_directory_path, self.temp_directory_path = ManticoreTools.get_pathes()
-        self.objects_list = []
-        self.set_1, self.set_2, self.set_all_data_var = tk.IntVar(), tk.IntVar(), tk.IntVar()
-        self.set_all_data = 0
-        self.need_to_remove_all_temp_files = 0
-        self.need_to_leave_temp_files_after_processing = 0
+        self.settings = ManticoreTools.read_input_card()
+        self.input_card_path = pathlib.Path(__file__).parent
+        self.data_path = self.settings.data_path
+        self.temp_path = self.settings.temp_path
+        self.object_list = []
+        self.set_create_stat_ped_file = tk.IntVar()
+        self.set_create_dyn_ped_file = tk.IntVar()
+        self.set_calculate_clean_ampls = tk.IntVar()
+        self.set_calculate_stat_ampls = tk.IntVar()
+        self.set_calculate_dyn_ampls = tk.IntVar()
+        self.set_all_data_var = tk.IntVar()
+        self.set_all_data = self.settings.all_data
         self.main_frame = tk.LabelFrame(self, bd=0)
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.head_frame = tk.LabelFrame(self.main_frame, text="Choose the source of settings", bd=2)
@@ -227,34 +237,34 @@ class ManticoreGUI(tk.Tk):
         automatic_settings_radiobutton.pack(side="left", padx=10, pady=10)
         manual_settings_radiobutton.pack(side="left", padx=10, pady=10)
 
-        self.data_directory_path_label = tk.Label(self.head_frame, text="Data directory:")
-        self.data_directory_path_label.pack(side="left", padx=10, pady=10)
-        self.data_directory_path_field = tk.Entry(self.head_frame, width=30)
-        self.data_directory_path_field.insert('end', self.data_directory_path)
-        self.data_directory_path_field.configure(state='disabled')
-        self.data_directory_path_field.pack(side="left", padx=5, pady=10)
-        self.data_directory_path_field.bind("<Return>", self.__change_data_directory_path)
-        self.data_directory_path_button = tk.Button(self.head_frame,
+        self.data_path_label = tk.Label(self.head_frame, text="Data directory:")
+        self.data_path_label.pack(side="left", padx=10, pady=10)
+        self.data_path_field = tk.Entry(self.head_frame, width=30)
+        self.data_path_field.insert('end', self.data_path)
+        self.data_path_field.configure(state='disabled')
+        self.data_path_field.pack(side="left", padx=5, pady=10)
+        self.data_path_field.bind("<Return>", self.__change_data_path)
+        self.data_path_button = tk.Button(self.head_frame,
                                                     text="Change path",
                                                     command=lambda: self.__set_path(
-                                                        self.data_directory_path_field)
+                                                        self.data_path_field)
                                                     )
-        self.data_directory_path_button.pack(side="left", padx=5, pady=10)
+        self.data_path_button.pack(side="left", padx=5, pady=10)
 
-        self.temp_directory_path_label = tk.Label(self.head_frame,
+        self.temp_path_label = tk.Label(self.head_frame,
                                                   text="Temporary files directory:")
-        self.temp_directory_path_label.pack(side="left", padx=15, pady=10)
-        self.temp_directory_path_field = tk.Entry(self.head_frame, width=30)
-        self.temp_directory_path_field.insert('end', self.temp_directory_path)
-        self.temp_directory_path_field.configure(state='disabled')
-        self.temp_directory_path_field.pack(side="left", padx=5, pady=10)
-        self.temp_directory_path_field.bind("<Return>", self.__change_temp_directory_path)
-        self.temp_directory_path_button = tk.Button(self.head_frame,
+        self.temp_path_label.pack(side="left", padx=15, pady=10)
+        self.temp_path_field = tk.Entry(self.head_frame, width=30)
+        self.temp_path_field.insert('end', self.temp_path)
+        self.temp_path_field.configure(state='disabled')
+        self.temp_path_field.pack(side="left", padx=5, pady=10)
+        self.temp_path_field.bind("<Return>", self.__change_temp_path)
+        self.temp_path_button = tk.Button(self.head_frame,
                                                     text="Change path",
                                                     command=lambda: self.__set_path(
-                                                        self.temp_directory_path_field)
+                                                        self.temp_path_field)
                                                     )
-        self.temp_directory_path_button.pack(side="left", padx=5, pady=10)
+        self.temp_path_button.pack(side="left", padx=5, pady=10)
 
     def __set_automatic_settings_frame(self):
         self.input_card_path_label = tk.Label(self.automatic_settings_frame,
@@ -280,20 +290,32 @@ class ManticoreGUI(tk.Tk):
         self.presets_frame.pack(side="left", padx=10, pady=10, anchor="n")
         self.checkbutton_frame = tk.Frame(self.presets_frame, bd=2)
         self.checkbutton_frame.pack(side="top", padx=10, pady=10, anchor="nw")
-        self.objects_var = tk.StringVar(value=self.objects_list)
-        self.objects_listbox = tk.Listbox(self.object_list_frame,
+        self.objects_var = tk.StringVar(value=self.object_list)
+        self.object_listbox = tk.Listbox(self.object_list_frame,
                                           listvariable=self.objects_var,
                                           selectmode='extended')
-        self.objects_listbox.pack(side="top", fill="both", expand=True, padx=10, pady=10)
-        self.objects_listbox.bind("<BackSpace>", self.__del_selected_from_listbox)
+        self.object_listbox.pack(side="top", fill="both", expand=True, padx=10, pady=10)
+        self.object_listbox.bind("<BackSpace>", self.__del_selected_from_listbox)
         self.set_1_check = tk.Checkbutton(
-            self.checkbutton_frame, variable=self.set_1,
-            text="Delete existing temporary files before processing and start with new raw processing")
+            self.checkbutton_frame, variable=self.set_create_stat_ped_file,
+            text="Create file with static pedestals")
         self.set_1_check.pack(side="top", padx=10, pady=10, anchor="nw")
         self.set_2_check = tk.Checkbutton(
-            self.checkbutton_frame, variable=self.set_2,
-            text="To leave all the temporary files after processing finish")
+            self.checkbutton_frame, variable=self.set_create_dyn_ped_file,
+            text="Create file with dynamic pedestals")
         self.set_2_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_3_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_clean_ampls,
+            text="Create file with clean amplitudes")
+        self.set_3_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_4_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_stat_ampls,
+            text="Create file with amplitudes normalized for static pedestals")
+        self.set_4_check.pack(side="top", padx=10, pady=10, anchor="nw")
+        self.set_5_check = tk.Checkbutton(
+            self.checkbutton_frame, variable=self.set_calculate_dyn_ampls,
+            text="Create file with amplitudes normalized for dynamic pedestals")
+        self.set_5_check.pack(side="top", padx=10, pady=10, anchor="nw")
         self.set_all = tk.Checkbutton(
             self.checkbutton_frame, variable=self.set_all_data_var,
             text="Process all data", command=self.__choose_all_data)
@@ -310,25 +332,25 @@ class ManticoreGUI(tk.Tk):
         if self.add_button['state'] == 'normal':
             self.add_button.configure(state='disabled')
             self.new_item_field.configure(state='disabled')
-            self.objects_listbox.configure(state='disabled')
+            self.object_listbox.configure(state='disabled')
         else:
             self.add_button.configure(state='normal')
             self.new_item_field.configure(state='normal')
-            self.objects_listbox.configure(state='normal')
+            self.object_listbox.configure(state='normal')
 
     def __add_item_to_listbox(self, event):
         item_list = self.new_item_field.get().split()
         for item in item_list:
-            self.objects_listbox.insert('end', item)
-            self.objects_list.append(item)
+            self.object_listbox.insert('end', item)
+            self.object_list.append(item)
         self.new_item_field.delete(0, 'end')
 
     def __del_selected_from_listbox(self, event):
-        select = list(self.objects_listbox.curselection())
+        select = list(self.object_listbox.curselection())
         select.reverse()
         for i in select:
-            self.objects_listbox.delete(i)
-            self.objects_list.pop(i)
+            self.object_listbox.delete(i)
+            self.object_list.pop(i)
 
     def __set_run_frame(self):
         self.run_button = tk.Button(
@@ -363,20 +385,26 @@ class ManticoreGUI(tk.Tk):
         self.__run()
 
     def __run(self):
-        self.set_all_data = 1 if (self.objects_list == ["a"] or self.set_all_data_var.get()) else 0
-        self.need_to_remove_all_temp_files = self.set_1.get()
-        self.need_to_leave_temp_files_after_processing = self.set_2.get()
+        self.set_all_data = 1 if (self.object_list == ["a"] or self.set_all_data_var.get()) else 0
+        self.settings = Settings(data_path=self.data_path, temp_path=self.temp_path,
+                                 create_stat_ped_file=self.set_create_stat_ped_file.get(),
+                                 create_dyn_ped_file=self.set_create_dyn_ped_file.get(),
+                                 calculate_clean_ampls=self.set_calculate_clean_ampls.get(),
+                                 calculate_stat_ampls=self.set_calculate_stat_ampls.get(),
+                                 calculate_dyn_ampls=self.set_calculate_dyn_ampls.get(),
+                                 object_list=self.object_list, all_data=self.set_all_data)
         ManticoreController(self, "gui")
 
     def __stop(self):
         if askyesno(title="Processing stop!",
-                    message="Do you really want to stop the processing? All created temporary files will NOT be deleted."):
+                    message="Do you really want to stop the processing? All created files will NOT be deleted."):
             self.__stop_processing()
             self.run_frame.destroy()
             self.run_frame = tk.LabelFrame(self.main_frame, text="Run", bd=2)
             self.run_frame.pack(fill="both", expand=False, padx=10, pady=10)
             for child in self.head_frame.winfo_children():
-                child.configure(state='normal')
+                if child not in [self.data_path_field, self.temp_path_field]:
+                    child.configure(state='normal')
             self.__set_run_frame()
             self.__frame_activator(from_manual_to_automatic=False)
 
@@ -403,28 +431,23 @@ class ManticoreGUI(tk.Tk):
         self.input_card_path_field.configure(state='disabled')
         self.input_card_path_field.update()
 
-    def __change_data_directory_path(self, event):
-        self.data_directory_path = pathlib.Path(self.data_directory_path_field.get())
-        self.data_directory_path_field.configure(state='disabled')
-        self.data_directory_path_field.update()
+    def __change_data_path(self, event):
+        self.data_path = pathlib.Path(self.data_path_field.get())
+        self.data_path_field.configure(state='disabled')
+        self.data_path_field.update()
 
-    def __change_temp_directory_path(self, event):
-        self.temp_directory_path = pathlib.Path(self.temp_directory_path_field.get())
-        self.temp_directory_path_field.configure(state='disabled')
-        self.temp_directory_path_field.update()
+    def __change_temp_path(self, event):
+        self.temp_path = pathlib.Path(self.temp_path_field.get())
+        self.temp_path_field.configure(state='disabled')
+        self.temp_path_field.update()
 
 
 class ManticoreController:
     def __init__(self, launcher, launcher_type: str):
         self.start_time = launcher.START_TIME
-        self.input_card_path = launcher.input_card_path
-        self.data_directory_path = launcher.data_directory_path
-        self.temp_directory_path = launcher.temp_directory_path
-        self.files_list_file = self.temp_directory_path.joinpath('files_list.txt')
+        self.settings = launcher.settings
         self.files_list = []    # pure names without suffixes, not pathes
-        self.set_all_data = launcher.set_all_data
-        self.need_to_remove_all_temp_files = launcher.need_to_remove_all_temp_files
-        self.need_to_leave_temp_files_after_processing = launcher.need_to_leave_temp_files_after_processing
+        # self.set_all_data = launcher.set_all_data
         self.constants = Constants()
         if launcher_type == "gui":
             self.run_frame_parent = launcher.run_frame
@@ -433,73 +456,116 @@ class ManticoreController:
             self.progressbar_parent_value_var = launcher.progressbar_value_var
             self.percent_parent_value_label = launcher.percents
             self.time_from_start_parent_label = launcher.time_label
-        if self.set_all_data:
-            self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in self.data_directory_path.iterdir() if os.path.isdir(day)]
+        if self.settings.all_data:
+            self.list_of_objects = [Day(name=day, path=self.settings.data_path.joinpath(day)) for day in self.settings.data_path.iterdir() if os.path.isdir(day)]
         else:
-            self.list_of_objects = [Day(name=day, path=self.data_directory_path.joinpath(day)) for day in launcher.objects_list if os.path.isdir(self.data_directory_path.joinpath(day))]
+            self.list_of_objects = [Day(name=day, path=self.settings.data_path.joinpath(day)) for day in self.settings.object_list if os.path.isdir(self.settings.data_path.joinpath(day))]
         self.list_of_objects_size = len(self.list_of_objects)
         self.start_engine(launcher_type)
 
     def start_engine(self, launcher_type):
+        integer_settings = [self.settings.create_stat_ped_file,
+                            self.settings.create_dyn_ped_file,
+                            self.settings.calculate_clean_ampls,
+                            self.settings.calculate_stat_ampls,
+                            self.settings.calculate_dyn_ampls]
         if launcher_type == "gui":
-            ManticoreEngine.parser(self, [LauncherManipulators.parser_gui_outside_manipulator,
-                                          LauncherManipulators.parser_gui_inside_manipulator])
-            for i in range(self.list_of_objects_size):
-                ManticoreEngine.static_pedestals(
-                    self, i,
-                    [LauncherManipulators.static_pedestals_gui_outside_manipulator,
-                     LauncherManipulators.static_pedestals_gui_inside_manipulator]
-                                                )
-                ManticoreEngine.dynamic_pedestals(
-                    self, i,
-                    [LauncherManipulators.dynamic_pedestals_gui_outside_manipulator,
-                     LauncherManipulators.dynamic_pedestals_gui_inside_manipulator]
-                    )
-                ManticoreEngine.fill_tails_dict(
-                    self, i,
-                    [LauncherManipulators.tails_gui_outside_manipulator,
-                     LauncherManipulators.tails_gui_inside_manipulator]
-                                                )
-                # ManticoreEngine.make_clean_amplitudes(
-                #     self, i,
-                #     [LauncherManipulators.amplitudes_gui_outside_manipulator,
-                #      LauncherManipulators.amplitudes_gui_inside_manipulator]
-                #                                 )
+            if any(integer_settings):
+                ManticoreEngine.parser(self, [LauncherManipulators.parser_gui_outside_manipulator,
+                                            LauncherManipulators.parser_gui_inside_manipulator])
+                for i in range(self.list_of_objects_size):
+                    if any(self.settings.create_stat_ped_file,
+                           self.settings.calculate_stat_ampls):
+                        ManticoreEngine.static_pedestals(self, i,
+                            [LauncherManipulators.static_pedestals_gui_outside_manipulator,
+                            LauncherManipulators.static_pedestals_gui_inside_manipulator],
+                            record_flag=bool(self.settings.create_stat_ped_file)
+                            )
+                    if any([self.settings.create_dyn_ped_file,
+                           self.settings.calculate_dyn_ampls]):
+                        ManticoreEngine.dynamic_pedestals(self, i,
+                            [LauncherManipulators.dynamic_pedestals_gui_outside_manipulator,
+                            LauncherManipulators.dynamic_pedestals_gui_inside_manipulator],
+                            record_flag=bool(self.settings.create_dyn_ped_file)
+                            )
+                    if any([self.settings.calculate_stat_ampls,
+                           self.settings.calculate_dyn_ampls,
+                           self.settings.calculate_clean_ampls]):
+                        ManticoreEngine.fill_tails_dict(
+                            self, i,
+                            [LauncherManipulators.tails_gui_outside_manipulator,
+                            LauncherManipulators.tails_gui_inside_manipulator]
+                            )
+                        ped_flag = 0
+                        if self.settings.calculate_clean_ampls:
+                            ped_flag += 1
+                            # take part in [1, 3, 5, 7] => bin =>
+                            # 1, 11, 101, 111 - we take [-1] digit
+                        if self.settings.calculate_stat_ampls:
+                            ped_flag += 2
+                            # take part in [2, 3, 6, 7] => bin =>
+                            # 10, 110, 11, 111 - we take [-2] digit
+                        if self.settings.calculate_dyn_ampls:
+                            ped_flag += 4
+                            # take part in [4, 5, 6, 7] => bin =>
+                            # 100, 110, 101, 111 - we take [-3] digit
+                        ManticoreEngine.amplitudes_to_file(
+                            self, i,
+                            [LauncherManipulators.amplitudes_gui_outside_manipulator,
+                            LauncherManipulators.amplitudes_gui_inside_manipulator],
+                            ped_flag=ped_flag
+                            )
         elif launcher_type == "console":
-            ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
-                                          LauncherManipulators.parser_console_inside_manipulator])
-            for i in range(self.list_of_objects_size):
-                ManticoreEngine.static_pedestals(
-                    self, i,
-                    [LauncherManipulators.static_pedestals_console_outside_manipulator,
-                     LauncherManipulators.static_pedestals_console_inside_manipulator]
-                                                )
-                ManticoreEngine.dynamic_pedestals(
-                    self, i,
-                    [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
-                     LauncherManipulators.dynamic_pedestals_console_inside_manipulator]
-                    )
-                ManticoreEngine.fill_tails_dict(
-                    self, i,
-                    [LauncherManipulators.tails_console_outside_manipulator,
-                     LauncherManipulators.tails_console_inside_manipulator]
-                                                )
-                # ManticoreEngine.make_clean_amplitudes(
-                #     self, i,
-                #     [LauncherManipulators.amplitudes_console_outside_manipulator,
-                #      LauncherManipulators.amplitudes_console_inside_manipulator]
-                #                                 )
+            if any(integer_settings):
+                ManticoreEngine.parser(self, [LauncherManipulators.parser_console_outside_manipulator,
+                                            LauncherManipulators.parser_console_inside_manipulator])
+                for i in range(self.list_of_objects_size):
+                    if any([self.settings.create_stat_ped_file,
+                           self.settings.calculate_stat_ampls]):
+                        ManticoreEngine.static_pedestals(self, i,
+                            [LauncherManipulators.static_pedestals_console_outside_manipulator,
+                            LauncherManipulators.static_pedestals_console_inside_manipulator],
+                            record_flag=bool(self.settings.create_stat_ped_file)
+                            )
+                    if any([self.settings.create_dyn_ped_file,
+                           self.settings.calculate_dyn_ampls]):
+                        ManticoreEngine.dynamic_pedestals(self, i,
+                            [LauncherManipulators.dynamic_pedestals_console_outside_manipulator,
+                            LauncherManipulators.dynamic_pedestals_console_inside_manipulator],
+                            record_flag=bool(self.settings.create_dyn_ped_file)
+                            )
+                    if any([self.settings.calculate_stat_ampls,
+                           self.settings.calculate_dyn_ampls,
+                           self.settings.calculate_clean_ampls]):
+                        ManticoreEngine.fill_tails_dict(
+                            self, i,
+                            [LauncherManipulators.tails_console_outside_manipulator,
+                            LauncherManipulators.tails_console_inside_manipulator]
+                            )
+                        ped_flag = 0
+                        if self.settings.calculate_clean_ampls:
+                            ped_flag += 1
+                            # take part in [1, 3, 5, 7] => bin =>
+                            # 1, 11, 101, 111 - we take [-1] digit
+                        if self.settings.calculate_stat_ampls:
+                            ped_flag += 2
+                            # take part in [2, 3, 6, 7] => bin =>
+                            # 10, 110, 11, 111 - we take [-2] digit
+                        if self.settings.calculate_dyn_ampls:
+                            ped_flag += 4
+                            # take part in [4, 5, 6, 7] => bin =>
+                            # 100, 110, 101, 111 - we take [-3] digit
+                        ManticoreEngine.amplitudes_to_file(
+                            self, i,
+                            [LauncherManipulators.amplitudes_console_outside_manipulator,
+                            LauncherManipulators.amplitudes_console_inside_manipulator],
+                            ped_flag=ped_flag
+                            )
 
 class ManticoreEngine:
-    # def create_empty_csv_out_file(name: str) -> None:
-    #     root = pathlib.Path(__file__).parent
-    #     out_csv_file = root.joinpath(pathlib.Path(name).with_suffix(".csv"))
-    #     out_csv_file.touch(exist_ok = True)
-    #     out_csv_file.write_text("")
-
     def parser(controller, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        controller.temp_directory_path.mkdir(parents = False, exist_ok = True) # IS FULL REWRITE??? OLD FILES ARE GONE???
+        controller.settings.temp_path.mkdir(parents = False, exist_ok = True) # IS FULL REWRITE??? OLD FILES ARE GONE???
         list_of_objects_iterator = outside_launcher_manipulator(controller)
         for i, day_directory in list_of_objects_iterator:
             day_files = set()
@@ -514,15 +580,12 @@ class ManticoreEngine:
             controller.list_of_objects[i].tails_list = list(controller.list_of_objects[i].tails_dict.keys())
             controller.list_of_objects[i].tails_number = len(controller.list_of_objects[i].tails_list)
 
-    def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        # root = pathlib.Path(__file__).parent
-        # out_csv_file = root.joinpath(pathlib.Path("OUT_stat").with_suffix(".csv"))
-        # out_csv_file.touch(exist_ok = True)
-        # out_csv_file.write_text("")
-        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+    def static_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable], record_flag: bool) -> None:
         day = controller.list_of_objects[number_of_day_in_total_list]
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day_ped_path_contains = sorted(day.path.joinpath("PED").iterdir())
         day_ped_path_contains_size = len(day_ped_path_contains)
+        assert day_ped_path_contains_size == controller.constants.BSM_number, "Something wrong!"
         list_of_ped_files_iterator = outside_launcher_manipulator(controller, day.name, day_ped_path_contains)
         for k, ped_file in list_of_ped_files_iterator:
             PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
@@ -547,36 +610,40 @@ class ManticoreEngine:
             sigma_sigma = np.sqrt(np.sum((np.average(PED_sigma) - PED_sigma)**2)/len(PED_sigma))
             ignore_status = np.array([(i%2 + 1) if (np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
             inside_launcher_manipulator(controller, k, day_ped_path_contains_size)
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_average.append(
-                [PED_av for i in range(day.tails_number)])
-            controller.list_of_objects[number_of_day_in_total_list].stat_peds_sigma.append(
-                [PED_sigma for i in range(day.tails_number)])
-            controller.list_of_objects[number_of_day_in_total_list].stat_ignore_pack.append(
-                [ignore_status for i in range(day.tails_number)])
+            day.stat_peds_average.append([PED_av[0] for i in range(day.tails_number)])
+            day.stat_peds_sigma.append([PED_sigma[0] for i in range(day.tails_number)])
+            day.stat_ignore_pack.append([ignore_status[0] for i in range(day.tails_number)])
+        # (BSM_number, tails_number, number_of_codes) -> (tails_number, BSM_number, number_of_codes)
+        day.stat_peds_average = np.array(day.stat_peds_average).swapaxes(0, 1)
+        day.stat_peds_sigma = np.array(day.stat_peds_sigma).swapaxes(0, 1)
+        day.stat_ignore_pack = np.array(day.stat_ignore_pack).swapaxes(0, 1)
+        if record_flag:
+            root = controller.settings.temp_path
+            out_csv_file = root.joinpath(pathlib.Path(day.name + "_static_pedestals").with_suffix(".csv"))
+            out_csv_file.touch(exist_ok = True)
+            out_csv_file.write_text("")
+            for i, tail in enumerate(day.stat_peds_average):
+                for j, BSM_codes in enumerate(tail):
+                    pd.DataFrame(BSM_codes).T.to_csv(out_csv_file, mode='a', index=False, header=False)
 
-    def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
-        # root = pathlib.Path(__file__).parent
-        # out_csv_file = root.joinpath(pathlib.Path("dyn_OUT").with_suffix(".csv"))
-        # out_csv_file.touch(exist_ok = True)
-        # out_csv_file.write_text("")
-        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
+    def dynamic_pedestals(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable], record_flag: bool) -> None:
         day = controller.list_of_objects[number_of_day_in_total_list]
+        outside_launcher_manipulator, inside_launcher_manipulator = manipulators
         day.dyn_peds_average = [[] for i in range(controller.constants.BSM_number)]
         day.dyn_peds_sigma = [[] for i in range(controller.constants.BSM_number)]
         day.dyn_ignore_pack = [[] for i in range(controller.constants.BSM_number)]
         list_of_tails_iterator = outside_launcher_manipulator(controller, day.name, day.tails_list)
-
         for k, tail in list_of_tails_iterator:
             for j, BSM_number in enumerate(controller.constants.BSM_list):
                 next_file_in_current_tail_bunch = day.path.joinpath(
                     controller.constants.BSM_list[j]).joinpath(day.files_list[j]).with_suffix(tail)
-
                 counter = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
                 PED = np.zeros([1, controller.constants.number_of_codes], dtype=controller.constants.IACT_float)
                 chunk_counter = 0
                 with open(next_file_in_current_tail_bunch, "rb") as codes_fin:
                     chunk = codes_fin.read(controller.constants.chunk_size)
                     while chunk and chunk_counter < controller.constants.test_pedestal_bunch_size:
+                                                    # work value = np.inf, test value = 50...200
                         codes_array = np.array(
                             struct.unpack(
                                 "<64h",
@@ -603,23 +670,30 @@ class ManticoreEngine:
                     [(i%2 + 1) if (
                         np.absolute(PED_sigma[0][i]) > sigma_av + 3*sigma_sigma) else 0 for i in range(
                         len(PED_av[0]))]).reshape(1, controller.constants.number_of_codes)
-
-                day.dyn_peds_average[j].append(PED_av)
-                day.dyn_peds_sigma[j].append(PED_sigma)
-                day.dyn_ignore_pack[j].append(ignore_status)
-                # pd.DataFrame(PED_av).to_csv(out_csv_file, mode='a', index=False, header=False)
-
+                day.dyn_peds_average[j].append(PED_av[0])
+                day.dyn_peds_sigma[j].append(PED_sigma[0])
+                day.dyn_ignore_pack[j].append(ignore_status[0])
             inside_launcher_manipulator(controller, k, day.tails_number)
+        day.dyn_peds_average = np.array(day.dyn_peds_average).swapaxes(0, 1)
+        day.dyn_peds_sigma = np.array(day.dyn_peds_sigma).swapaxes(0, 1)
+        day.dyn_ignore_pack = np.array(day.dyn_ignore_pack).swapaxes(0, 1)
+        if record_flag:
+            root = controller.settings.temp_path
+            out_csv_file = root.joinpath(pathlib.Path(day.name + "_dynamic_pedestals").with_suffix(".csv"))
+            out_csv_file.touch(exist_ok = True)
+            out_csv_file.write_text("")
+            for i, tail in enumerate(day.dyn_peds_average):
+                for j, BSM_codes in enumerate(tail):
+                    pd.DataFrame(BSM_codes).T.to_csv(out_csv_file, mode='a', index=False, header=False)
 
     def fill_tails_dict(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
         outside_launcher_manipulator, inside_launcher_manipulator = manipulators
-        # root = pathlib.Path(__file__).parent
-        # out_csv_file = root.joinpath(pathlib.Path("OUT_tails_dict").with_suffix(".csv"))
-        # out_csv_file.touch(exist_ok = True)
-        # out_csv_file.write_text("")
         day = controller.list_of_objects[number_of_day_in_total_list]
+        root = controller.settings.temp_path
+        out_csv_file = root.joinpath(pathlib.Path(day.name + "_event_number_ranges").with_suffix(".csv"))
+        out_csv_file.touch(exist_ok = True)
+        out_csv_file.write_text("")
         list_of_tails_iterator = outside_launcher_manipulator(controller, day.name, day.tails_list)
-
         for k, tail in list_of_tails_iterator:
             opened_files_bunch = []
             for j in range(controller.constants.BSM_number):
@@ -638,14 +712,24 @@ class ManticoreEngine:
             inside_launcher_manipulator(controller, k, day.tails_number)
         for key, key_list in day.tails_dict.items():
             day.tails_dict[key] = [np.min(key_list), np.max(key_list)]
-            # pd.DataFrame([int(key[1:]), *day.tails_dict[key]]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
+            pd.DataFrame([int(key[1:]), *day.tails_dict[key]]).T.to_csv(out_csv_file, mode='a', index=False, header=False)
 
-    def make_clean_amplitudes(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable]) -> None:
+    def amplitudes_to_file(controller, number_of_day_in_total_list: int, manipulators: list[callable, callable], ped_flag: int) -> None:
+        dyn_flag, stat_flag, clean_flag = list(bin(ped_flag)[2:])
         day = controller.list_of_objects[number_of_day_in_total_list]
-        root = pathlib.Path(__file__).parent
-        out_csv_file = root.joinpath(pathlib.Path("OUT").with_suffix(".csv"))
-        out_csv_file.touch(exist_ok = True)
-        out_csv_file.write_text("")
+        root = controller.settings.temp_path
+        if clean_flag:
+            clean_out_csv_file = root.joinpath(pathlib.Path(day.name + "_clean_amplitudes").with_suffix(".csv"))
+            clean_out_csv_file.touch(exist_ok = True)
+            clean_out_csv_file.write_text("")
+        if stat_flag:
+            static_out_csv_file = root.joinpath(pathlib.Path(day.name + "_static_amplitudes").with_suffix(".csv"))
+            static_out_csv_file.touch(exist_ok = True)
+            static_out_csv_file.write_text("")
+        if dyn_flag:
+            dynamic_out_csv_file = root.joinpath(pathlib.Path(day.name + "_dynamic_amplitudes").with_suffix(".csv"))
+            dynamic_out_csv_file.touch(exist_ok = True)
+            dynamic_out_csv_file.write_text("")
         coinscidence_dict = {}
         for BSM_number in range(controller.constants.BSM_number):
             coinscidence_dict[BSM_number] = 0
@@ -660,9 +744,9 @@ class ManticoreEngine:
                 opened_files_bunch.append(open(next_file_in_current_tail_bunch, 'rb'))
             chunk_array = [file.read(controller.constants.chunk_size) for file in opened_files_bunch]
             for i in tqdm(range(day.tails_dict[tail][0], day.tails_dict[tail][1]+1), desc=f'Events: '):
-                event = [i]
+                clean_event, static_event, dynamic_event = [i], [i], [i]
                 coinscidence_counter = 0
-                for k, chunk in enumerate(chunk_array):
+                for x, chunk in enumerate(chunk_array):
                     if chunk:
                         event_number = struct.unpack(
                             'I',
@@ -693,16 +777,30 @@ class ManticoreEngine:
                                     clean_amplitudes[0][m] = codes_array[0][m]/4
                                 else:
                                     clean_amplitudes[0][m:m+2] = codes_array[0][m+1]/4, 1
-                            event += [maroc_number, time_string, *clean_amplitudes[0]]
-                            chunk_array[k] = opened_files_bunch[k].read(controller.constants.chunk_size)
-                            if not chunk_array[k]:
-                                chunk_array[k] = None
+                            if clean_flag:
+                                clean_event += [maroc_number, time_string,
+                                                *clean_amplitudes[0]]
+                            if stat_flag:
+                                static_event += [maroc_number, time_string,
+                                                 *(clean_amplitudes[0] - day.stat_peds_average[k][maroc_number])]
+                            if dyn_flag:
+                                dynamic_event += [maroc_number, time_string,
+                                                  *(clean_amplitudes[0] - day.dyn_peds_average[k][maroc_number])]
+                            chunk_array[x] = opened_files_bunch[x].read(controller.constants.chunk_size)
+                            if not chunk_array[x]:
+                                chunk_array[x] = None
                 coinscidence_dict[coinscidence_counter] += 1
-                pd.DataFrame(event).T.to_csv(out_csv_file, mode='a', index=False, header=False)
-
+                if clean_flag:
+                    pd.DataFrame(clean_event).T.to_csv(clean_out_csv_file, mode='a', index=False, header=False)
+                if stat_flag:
+                    pd.DataFrame(static_event).T.to_csv(static_out_csv_file, mode='a', index=False, header=False)
+                if dyn_flag:
+                    pd.DataFrame(dynamic_event).T.to_csv(dynamic_out_csv_file, mode='a', index=False, header=False)
             inside_launcher_manipulator(controller, k, day.tails_number)
-
-
+        coin_file = root.joinpath(pathlib.Path(day.name + "_coinscidens").with_suffix(".csv"))
+        coin_file.touch(exist_ok = True)
+        coin_file.write_text("")
+        pd.DataFrame.from_dict(coinscidence_dict).to_csv(coin_file, mode='a', index=False, header=False)
 
 
 if __name__ == "__main__":
